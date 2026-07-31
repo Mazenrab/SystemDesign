@@ -1,0 +1,713 @@
+openapi: 3.0.3
+info:
+  title: Food Delivery API
+  version: 1.0.0
+  description: API для аутентификации, каталога, заказов, интерфейса курьеров и управления меню ресторанов.
+paths:
+
+  # --- AUTHENTICATION ---
+
+  /auth/login:
+    post:
+      summary: Вход в систему
+      description: Аутентификация по email и паролю. Возвращает Access и Refresh токены.
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: courier@example.com
+                password:
+                  type: string
+                  format: password
+                  example: "SecureP@ss123"
+      responses:
+        '200':
+          description: Успешная аутентификация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+                      
+  /auth/refresh:
+    post:
+      summary: Обновление токенов
+      description: Выпуск новой пары Access и Refresh токенов взамен истекшего Access токена.
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refreshToken
+              properties:
+                refreshToken:
+                  type: string
+                  example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.refresh_payload..."
+      responses:
+        '200':
+          description: Токены успешно обновлены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Refresh токен невалиден, просрочен или отозван
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  
+
+  /auth/me:
+    get:
+      summary: Получение профиля текущего пользователя
+      description: Возвращает данные пользователя на основе переданного Bearer токена.
+      tags:
+        - Authentication
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Данные успешно получены
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                    example: "123e4567-e89b-12d3-a456-426614174000"
+                  email:
+                    type: string
+                    format: email
+                    example: user@example.com
+                  role:
+                    type: string
+                    enum: [client, courier, restaurant]
+                    example: client
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+# --- RESTAURANTS & MENU (PUBLIC CATALOG) ---                      
+
+  /restaurants:
+    get:
+      summary: Список ресторанов
+      description: Возвращает список доступных ресторанов с фильтрацией по гео-координатам пользователя.
+      tags:
+        - Catalog
+      parameters:
+        - name: latitude
+          in: query
+          required: true
+          schema:
+            type: number
+            format: float
+            example: 55.7558
+        - name: longitude
+          in: query
+          required: true
+          schema:
+            type: number
+            format: float
+            example: 37.6173
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            example: 10            
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+            example: 40
+      responses:
+        '200':
+          description: Список ресторанов успешно получен
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Restaurant'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+
+  /restaurants/{restaurantId}/menu:
+    get:
+      summary: Просмотр меню ресторана (публичный)
+      description: Возвращает список позиций в ресторане.
+      tags:
+        - Catalog
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: "888e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Меню ресторана успешно получено
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MenuItem'
+        '404':
+          description: Ресторан не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+# --- ORDERS (CLIENT INTERFACE) ---
+
+  /orders:
+    post:
+      summary: Создание заказа
+      description: Создает новый заказ в системе. Требуется авторизация пользователя.
+      tags:
+        - Orders
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Ключ идемпотентности для дедупликации заказа.
+          schema:
+            type: string
+            format: uuid
+            example: "8e03978e-40d5-43e8-bc93-6894a57f9324"     
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - restaurantId
+                - items
+                - deliveryAddress
+              properties:
+                restaurantId:
+                  type: string
+                  format: uuid
+                  example: "888e4567-e89b-12d3-a456-426614174000"
+                deliveryAddress:
+                  type: string
+                  example: "Москва, ул. Базовская, д. 10, кв. 125"
+                items:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - menuItemId
+                      - quantity
+                    properties:
+                      menuItemId:
+                        type: string
+                        format: uuid
+                        example: "999e4567-e89b-12d3-a456-426614174000"
+                      quantity:
+                        type: integer
+                        minimum: 1
+                        example: 2
+      responses:
+        '201':
+          description: Заказ успешно создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          description: Ошибка валидации данных (например, пустая корзина)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /orders/{orderId}/status:
+    get:
+      summary: Отслеживание статуса заказа клиентом
+      description: Возвращает текущий статус заказа и гео-координаты курьера, если он назначен.
+      tags:
+        - Orders
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: "555e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Статус заказа успешно получен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderStatusResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Заказ не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+# --- COURIER INTERFACE ---
+
+  /courier/orders/{orderId}/accept:
+    post:
+      summary: Принять заказ в работу
+      description: Закрепляет заказ за курьером.
+      tags:
+        - Couriers
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: "555e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Заказ успешно закреплен за курьером
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Заказ не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт. Заказ уже взят другим курьером.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /courier/orders/{orderId}/status:
+    put:
+      summary: Изменение статуса выполнения заказа курьером
+      description: Позволяет курьеру строго по цепочке переключать шаги доставки (в ресторане, в пути, доставлен).
+      tags:
+        - Couriers
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: "555e4567-e89b-12d3-a456-426614174000"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - ARRIVED_AT_RESTAURANT
+                    - PICKED_UP
+                    - DELIVERED
+                  example: "PICKED_UP"
+                  description: |
+                    ARRIVED_AT_RESTAURANT - Курьер прибыл в ресторан.
+                    PICKED_UP - Заказ забран, курьер в пути к клиенту.
+                    DELIVERED - Заказ успешно передан клиенту.
+      responses:
+        '200':
+          description: Статус заказа успешно изменен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          description: Неверный переход статуса (нарушена логика шагов)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Заказ не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+# --- RESTAURANT MANAGEMENT INTERFACE ---
+
+  /management/my-restaurant/menu:
+    get:
+      summary: Получить полное меню своего ресторана
+      description: Возвращает список всех позиций меню для авторизованного администратора (включая скрытые позиции).
+      tags:
+        - Restaurant Management
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Список блюд успешно получен
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MenuItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступ запрещен (пользователь не менеджер этого ресторана)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    post:
+      summary: Добавить новое блюдо в меню
+      description: Создает новую позицию в каталоге блюд ресторана.
+      tags:
+        - Restaurant Management
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - price
+                - isAvailable
+              properties:
+                name:
+                  type: string
+                  example: "Пышка классическая"
+                description:
+                  type: string
+                  example: "Традиционное пышное колечко во фритюре с сахарной пудрой"
+                price:
+                  type: number
+                  example: 250.00
+                isAvailable:
+                  type: boolean
+                  example: true
+      responses:
+        '201':
+          description: Блюдо успешно создано и добавлено в меню
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuItem'
+        '400':
+          description: Некорректные входные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступ запрещен (пользователь не менеджер этого ресторана)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /management/my-restaurant/menu/{itemId}:
+    patch:
+      summary: Частичное обновление позиции в меню
+      description: Позволяет изменить цену или оперативно отправить блюдо в стоп-лист (isAvailable = false).
+      tags:
+        - Restaurant Management
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: "999e4567-e89b-12d3-a456-426614174000"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: "Пышка питерская"
+                description:
+                  type: string
+                price:
+                  type: number
+                  example: 319.99
+                isAvailable:
+                  type: boolean
+                  example: false
+      responses:
+        '200':
+          description: Позиция меню успешно обновлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Блюдо с таким ID не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+                
+    delete:
+      summary: Удалить блюдо из меню
+      description: Полностью удаляет позицию из каталога ресторана.
+      tags:
+        - Restaurant Management
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Блюдо успешно удалено (тело ответа пустое)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Блюдо не найдено
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      
+  responses:
+    TooManyRequests:
+      description: Превышен лимит запросов (Rate Limit). Повторите попытку позже.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Время в секундах, через которое можно повторить запрос.
+          example: 60
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Too Many Requests"
+            message: "Too many login attempts. Please try again in 60 seconds."
+  
+    Unauthorized:
+      description: Токен отсутствует, просрочен или невалиден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Unauthorized"
+            message: "Missing, invalid, or expired access token."
+
+  schemas:
+    TokenResponse:
+      type: object
+      required:
+        - accessToken
+        - refreshToken
+        - expiresIn
+      properties:
+        accessToken:
+          type: string
+          description: Короткоживущий токен для авторизации запросов (15 минут)
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.access_payload..."
+        refreshToken:
+          type: string
+          description: Долгоживущий токен для получения новых пар токенов (30 дней)
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.refresh_payload..."
+        expiresIn:
+          type: integer
+          description: Время жизни access-токена в секундах
+          example: 900
+  
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Unauthorized"
+        message:
+          type: string
+          example: "Invalid credentials or token expired."
+          
+    Restaurant:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "888e4567-e89b-12d3-a456-426614174000"
+        name:
+          type: string
+          example: "Калачи да Пышки"
+        rating:
+          type: number
+          format: float
+          example: 5.0
+        deliveryTimeMinutes:
+          type: integer
+          example: 35
+          
+    MenuItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "999e4567-e89b-12d3-a456-426614174000"
+        name:
+          type: string
+          example: "Калач коврижчатый московский"
+        description:
+          type: string
+          example: "Пышное тесто и белая глазурь"
+        price:
+          type: number
+          example: 450.00
+        isAvailable:
+          type: boolean
+          example: true
+          
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "555e4567-e89b-12d3-a456-426614174000"
+        status:
+          type: string
+          enum:
+            - CREATED
+            - PAID
+            - COOKING
+            - DELIVERING
+            - COMPLETED
+            - CANCELLED
+          example: "CREATED"
+        totalPrice:
+          type: number
+          example: 900.00
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-07-27T18:30:00Z"
+          
+    OrderStatusResponse:
+      type: object
+      properties:
+        orderId:
+          type: string
+          format: uuid
+          example: "555e4567-e89b-12d3-a456-426614174000"
+        status:
+          type: string
+          example: "DELIVERING"
+        courierLocation:
+          type: object
+          properties:
+            latitude:
+              type: number
+              format: float
+              example: 55.7562
+            longitude:
+              type: number
+              format: float
+              example: 37.6185
+          
