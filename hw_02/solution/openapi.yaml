@@ -207,6 +207,15 @@ paths:
         - Orders
       security:
         - BearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Ключ идемпотентности для дедупликации заказа.
+          schema:
+            type: string
+            format: uuid
+            example: "8e03978e-40d5-43e8-bc93-6894a57f9324"     
       requestBody:
         required: true
         content:
