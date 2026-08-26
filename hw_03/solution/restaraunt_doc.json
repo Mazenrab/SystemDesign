@@ -1,0 +1,196 @@
+{
+  "id": "01916f12-e7f0-7b3a-8f1d-2a4b5c6d7e8f",
+  "name": "ГастроПаб «Вкус и Пена»",
+  "description": "Уютный гастропаб с авторской кухней и крафтовыми напитками.",
+  "address": "ул. Пушкина, д. 10, Москва, Россия",
+  "lat": 55.755826,
+  "lon": 37.6173,
+  "logo_url": "https://example.com",
+  "rating": 4.8,
+  "restaurant_schedules": [
+    {
+      "id": "01916f12-e7f0-7c01-ad2a-111111111111",
+      "restaurant_id": "01916f12-e7f0-7b3a-8f1d-2a4b5c6d7e8f",
+      "weekday": 1,
+      "openning_time": "10:00:00",
+      "closing_time": "23:00:00",
+      "is_closed": false
+    },
+    {
+      "id": "01916f12-e7f0-7c02-ad2a-222222222222",
+      "restaurant_id": "01916f12-e7f0-7b3a-8f1d-2a4b5c6d7e8f",
+      "weekday": 2,
+      "openning_time": "10:00:00",
+      "closing_time": "23:00:00",
+      "is_closed": false
+    },
+    {
+      "id": "01916f12-e7f0-7c03-ad2a-333333333333",
+      "restaurant_id": "01916f12-e7f0-7b3a-8f1d-2a4b5c6d7e8f",
+      "weekday": 3,
+      "openning_time": "10:00:00",
+      "closing_time": "23:00:00",
+      "is_closed": false
+    },
+    {
+      "id": "01916f12-e7f0-7c04-ad2a-444444444444",
+      "restaurant_id": "01916f12-e7f0-7b3a-8f1d-2a4b5c6d7e8f",
+      "weekday": 4,
+      "openning_time": "10:00:00",
+      "closing_time": "23:00:00",
+      "is_closed": false
+    },
+    {
+      "id": "01916f12-e7f0-7c05-ad2a-555555555555",
+      "restaurant_id": "01916f12-e7f0-7b3a-8f1d-2a4b5c6d7e8f",
+      "weekday": 5,
+      "openning_time": "10:00:00",
+      "closing_time": "01:00:00",
+      "is_closed": false
+    },
+    {
+      "id": "01916f12-e7f0-7c06-ad2a-666666666666",
+      "restaurant_id": "01916f12-e7f0-7b3a-8f1d-2a4b5c6d7e8f",
+      "weekday": 6,
+      "openning_time": "12:00:00",
+      "closing_time": "01:00:00",
+      "is_closed": false
+    },
+    {
+      "id": "01916f12-e7f0-7c07-ad2a-777777777777",
+      "restaurant_id": "01916f12-e7f0-7b3a-8f1d-2a4b5c6d7e8f",
+      "weekday": 7,
+      "openning_time": "12:00:00",
+      "closing_time": "23:00:00",
+      "is_closed": false
+    }
+  ],
+  "menu_items": [
+    {
+      "id": "01916f12-e7f1-7a4f-9e2c-0000000000a1",
+      "name": "Фирменный Бургер",
+      "description": "Сочная котлета из мраморной говядины, сыр чеддер и секретный соус.",
+      "price": 590,
+      "image_url": "https://example.com",
+      "is_available": true,
+      "weight_in_grams": 350,
+      "protein_per_100g": 12,
+      "fat_per_100g": 15,
+      "carbs_per_100g": 24,
+      "calories_per_100g": 279,
+      "modifier_groups": [
+        {
+          "id": "01916f12-e7f2-7f8b-bd1e-0000000000f1",
+          "menu_item_id": "01916f12-e7f1-7a4f-9e2c-0000000000a1",
+          "name": "Добавки",
+          "min_select": 0,
+          "max_select": 2,
+          "modifier_items": [
+            {
+              "id": "01916f12-e7f3-7c4d-ae5b-000000000001",
+              "modifier_group_id": "01916f12-e7f2-7f8b-bd1e-0000000000f1",
+              "name": "Двойной чеддер",
+              "price": 80,
+              "is_available": true
+            },
+            {
+              "id": "01916f12-e7f3-7c4d-ae5b-000000000002",
+              "modifier_group_id": "01916f12-e7f2-7f8b-bd1e-0000000000f1",
+              "name": "Хрустящий бекон",
+              "price": 120,
+              "is_available": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "01916f12-e7f1-7a4f-9e2c-0000000000a2",
+      "name": "Чикен Бургер",
+      "description": "Хрустящее куриное филе, салат айсберг и майонезный соус.",
+      "price": 450,
+      "image_url": "https://example.com",
+      "is_available": true,
+      "weight_in_grams": 310,
+      "protein_per_100g": 14,
+      "fat_per_100g": 11,
+      "carbs_per_100g": 28,
+      "calories_per_100g": 265,
+      "modifier_groups": []
+    },
+    {
+      "id": "01916f12-e7f1-7a4f-9e2c-0000000000b1",
+      "name": "Картофель фри",
+      "description": "Золотистый, хрустящий картофель с морской солью.",
+      "price": 190,
+      "image_url": "https://example.com",
+      "is_available": true,
+      "weight_in_grams": 150,
+      "protein_per_100g": 4,
+      "fat_per_100g": 16,
+      "carbs_per_100g": 40,
+      "calories_per_100g": 318,
+      "modifier_groups": []
+    },
+    {
+      "id": "01916f12-e7f1-7a4f-9e2c-0000000000c1",
+      "name": "Мега Комбо",
+      "description": "Чикен Бургер + Картофель фри со скидкой 15%.",
+      "price": 540,
+      "image_url": "https://example.com",
+      "is_available": true,
+      "weight_in_grams": 460,
+      "protein_per_100g": 10,
+      "fat_per_100g": 13,
+      "carbs_per_100g": 32,
+      "calories_per_100g": 285,
+      "modifier_groups": []
+    }
+  ],
+  "menu_categories": [
+    {
+      "id": "01916f12-e7f0-7d1a-be3d-000000000001",
+      "restaurant_id": "01916f12-e7f0-7b3a-8f1d-2a4b5c6d7e8f",
+      "name": "Бургеры",
+      "sort_order": 2,
+      "menu_items": [
+        {
+          "id": "01916f12-e7f1-7a4f-9e2c-0000000000a1",
+          "sort_order": 1
+        },
+        {
+          "id": "01916f12-e7f1-7a4f-9e2c-0000000000a2",
+          "sort_order": 2
+        }
+      ]
+    },
+    {
+      "id": "01916f12-e7f0-7d1a-be3d-000000000002",
+      "restaurant_id": "01916f12-e7f0-7b3a-8f1d-2a4b5c6d7e8f",
+      "name": "Закуски",
+      "sort_order": 3,
+      "menu_items": [
+        {
+          "id": "01916f12-e7f1-7a4f-9e2c-0000000000b1",
+          "sort_order": 1
+        }
+      ]
+    },
+    {
+      "id": "01916f12-e7f0-7d1a-be3d-000000000003",
+      "restaurant_id": "01916f12-e7f0-7b3a-8f1d-2a4b5c6d7e8f",
+      "name": "Комбо и Акции",
+      "sort_order": 1,
+      "menu_items": [
+        {
+          "id": "01916f12-e7f1-7a4f-9e2c-0000000000a1",
+          "sort_order": 2
+        },
+        {
+          "id": "01916f12-e7f1-7a4f-9e2c-0000000000c1",
+          "sort_order": 1
+        }
+      ]
+    }
+  ]
+}
