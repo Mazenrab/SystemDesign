@@ -4,9 +4,9 @@
 
 ## Выбранная тема
 
-_Система управления мероприятиями — билеты на концерты._
+_Система управления мероприятиями — билеты на мероприятия (Tiketing System)._
 
-Система управления мероприятиями и продажи билетов — это система, которая позволяет организаторам создавать события, настраивать интерактивные схемы залов, управлять билетами на мероприятие. Покупатели могут быстро находить концерты, выбирать места на схеме и оплачивать билеты онлайн. Система обеспечивает  проверку билетов контролерами с помощью сканеров на входе на площадку.
+Система управления мероприятиями и продажи билетов — это система, которая позволяет организаторам создавать мероприятия(события), настраивать интерактивные схемы залов, управлять билетами на мероприятие. Покупатели могут быстро находить концерты, выбирать места на схеме и оплачивать билеты онлайн. Система обеспечивает  проверку билетов контролерами с помощью сканеров на входе на площадку.
 
 
 ## 1. Требования
@@ -126,6 +126,94 @@ _Система управления мероприятиями — билеты
 
 
 ## 2. Концептуальная архитектура
+
+```mermaid
+C4Context
+    title Контекст системы бронирования билетов на мероприятия
+        Enterprise_Boundary(b0, "") {
+        Person(personUser, "Покупатель", "Покупатель билетов.<br/>Пользователь, ищущий и покупающий билеты.")
+        Person(personOrganizer, "Организатор", "Организатор мероприятий.<br/>Добавляет мероприятия и управляет залами.")
+        Person(personController, "Контролер", "Контролер билетов.<br/>Проверяет и валидирует билеты на входе.")
+        Person(personAdministrator, "Администратор", "Администратор системы<br/>Сотрудник Tiketing System, настраивает лимиты и решает споры.")
+
+        System(systemTicketingSystem, "Tiketing System", "Платформа бронирования билетов.<br/>'Позволяет искать мероприятия, безопасно покупать билеты без риска двойных продаж и валидировать их на входе.")
+        }
+
+        Boundary(b1, "") {
+        System_Ext(extSystemPayment, "Payment Provider", "Инициирует списание средств и возвраты клиентам.")
+        System_Ext(extSystemIdentity, "Identity Provider", "Внешний сервис авторизации. Yandex, Google, Facebook, etc...")
+        System_Ext(extSystemNotification, "Notification Provider", "Передает Email / SMS / Push сообщения с электронными билетами для доставки.")
+        }      
+
+        Rel(personUser, systemTicketingSystem, "Ищет концерты,<br/>резервирует места,<br/> оплачивает заказы.")
+        Rel(personOrganizer, systemTicketingSystem, "Заводит мероприятия,<br/> настраивает схемы залов.")
+        Rel(personController, systemTicketingSystem, "Сканирует QR-коды<br/> для проверки<br/> статуса билета.")
+        Rel(personAdministrator, systemTicketingSystem, "Модерирует события,<br/>меняет лимиты,<br/> разрешает спорные ситуации.")
+
+        Rel(systemTicketingSystem, extSystemPayment, "Списание и возвраты<br/>средств клиента.")
+        Rel(systemTicketingSystem, extSystemIdentity, "Внешний сервис авторизации.")
+        Rel(systemTicketingSystem, extSystemNotification, "Передает Email / SMS / Push<br/>сообщения с электронными билетами для доставки.")
+
+        UpdateLayoutConfig($c4ShapeInRow="4", $c4BoundaryInRow="1")
+       
+```
+
+```mermaid
+C4Container
+    title Container diagram for Tiketing System
+
+        Person(personUser, "Покупатель", "Покупатель билетов.<br/>Пользователь, ищущий и покупающий билеты.")
+        Person(personOrganizer, "Организатор", "Организатор мероприятий.<br/>Добавляет мероприятия и управляет залами.")
+        Person(personController, "Контролер", "Контролер билетов.<br/>Проверяет и валидирует билеты на входе.")
+        Person(personAdministrator, "Администратор", "Администратор системы<br/>Сотрудник Tiketing System, настраивает лимиты и решает споры.")
+
+    Container_Boundary(c1, "Tiketing System") {
+        Container(webApp, "Веб-сайт", "JavaScript", "Веб-сайт для бронирования билетов покупателями.")
+        Container(mobileApp, "Мобильное приложение", "Android/iOS", "Мобильное приложение для бронирования билетов покупателями.")
+        Container(controllerApp, "Мобильное приложение", "Android/iOS", "Мобильное приложение для проверки валидноти билетов.")
+        Container(webAdminPortal, "Веб-сайт", "", "Веб-портал для администрирования.")
+    }
+```
+
+
+```mermaid
+C4Container
+    title Container diagram for Internet Banking System
+
+    System_Ext(email_system, "E-Mail System", "The internal Microsoft Exchange system", $tags="v1.0")
+    Person(customer, Customer, "A customer of the bank, with personal bank accounts", $tags="v1.0")
+
+    Container_Boundary(c1, "Internet Banking") {
+        Container(spa, "Single-Page App", "JavaScript, Angular", "Provides all the Internet banking functionality to customers via their web browser")
+        Container_Ext(mobile_app, "Mobile App", "C#, Xamarin", "Provides a limited subset of the Internet banking functionality to customers via their mobile device")
+        Container(web_app, "Web Application", "Java, Spring MVC", "Delivers the static content and the Internet banking SPA")
+        ContainerDb(database, "Database", "SQL Database", "Stores user registration information, hashed auth credentials, access logs, etc.")
+        ContainerDb_Ext(backend_api, "API Application", "Java, Docker Container", "Provides Internet banking functionality via API")
+
+    }
+
+    System_Ext(banking_system, "Mainframe Banking System", "Stores all of the core banking information about customers, accounts, transactions, etc.")
+
+    Rel(customer, web_app, "Uses", "HTTPS")
+    UpdateRelStyle(customer, web_app, $offsetY="60", $offsetX="90")
+    Rel(customer, spa, "Uses", "HTTPS")
+    UpdateRelStyle(customer, spa, $offsetY="-40")
+    Rel(customer, mobile_app, "Uses")
+    UpdateRelStyle(customer, mobile_app, $offsetY="-30")
+
+    Rel(web_app, spa, "Delivers")
+    UpdateRelStyle(web_app, spa, $offsetX="130")
+    Rel(spa, backend_api, "Uses", "async, JSON/HTTPS")
+    Rel(mobile_app, backend_api, "Uses", "async, JSON/HTTPS")
+    Rel_Back(database, backend_api, "Reads from and writes to", "sync, JDBC")
+
+    Rel(email_system, customer, "Sends e-mails to")
+    UpdateRelStyle(email_system, customer, $offsetX="-45")
+    Rel(backend_api, email_system, "Sends e-mails using", "sync, SMTP")
+    UpdateRelStyle(backend_api, email_system, $offsetY="-60")
+    Rel(backend_api, banking_system, "Uses", "sync/async, XML/HTTPS")
+    UpdateRelStyle(backend_api, banking_system, $offsetY="-50", $offsetX="-140")
+```
 
 - Схема C4: Context + Container (в diagrams/).
 - Описание компонентов (1–2 предложения на каждый).
