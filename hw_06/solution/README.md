@@ -1,4 +1,4 @@
-# ДЗ 6. Проектная работа — решение
+w# ДЗ 6. Проектная работа — решение
 
 > Условие: [../Задание.md](../Задание.md). Схемы — в [diagrams/](diagrams/).
 
@@ -167,52 +167,45 @@ C4Container
         Person(personController, "Контролер", "Контролер билетов.<br/>Проверяет и валидирует билеты на входе.")
         Person(personAdministrator, "Администратор", "Администратор системы<br/>Сотрудник Tiketing System, настраивает лимиты и решает споры.")
 
-    Container_Boundary(c1, "Tiketing System") {
+    Container_Boundary(c0, "Client layer") {
         Container(webApp, "Веб-сайт", "JavaScript", "Веб-сайт для бронирования билетов покупателями.")
-        Container(mobileApp, "Мобильное приложение", "Android/iOS", "Мобильное приложение для бронирования билетов покупателями.")
-        Container(controllerApp, "Мобильное приложение", "Android/iOS", "Мобильное приложение для проверки валидноти билетов.")
+        Container(mobileApp, "Мобильное бронирование", "Android/iOS", "Мобильное приложение для бронирования билетов покупателями.")
+        Container(controllerApp, "Мобильное QR-сканирование", "Android/iOS", "Мобильное приложение для проверки валидности билетов.")
         Container(webAdminPortal, "Веб-сайт", "", "Веб-портал для администрирования.")
     }
-```
 
+    Container_Boundary(c1, "Service layer") {
 
-```mermaid
-C4Container
-    title Container diagram for Internet Banking System
-
-    System_Ext(email_system, "E-Mail System", "The internal Microsoft Exchange system", $tags="v1.0")
-    Person(customer, Customer, "A customer of the bank, with personal bank accounts", $tags="v1.0")
-
-    Container_Boundary(c1, "Internet Banking") {
-        Container(spa, "Single-Page App", "JavaScript, Angular", "Provides all the Internet banking functionality to customers via their web browser")
-        Container_Ext(mobile_app, "Mobile App", "C#, Xamarin", "Provides a limited subset of the Internet banking functionality to customers via their mobile device")
-        Container(web_app, "Web Application", "Java, Spring MVC", "Delivers the static content and the Internet banking SPA")
-        ContainerDb(database, "Database", "SQL Database", "Stores user registration information, hashed auth credentials, access logs, etc.")
-        ContainerDb_Ext(backend_api, "API Application", "Java, Docker Container", "Provides Internet banking functionality via API")
-
+        Container(ApiGateway, "API Gateway", "Kong / Nginx", "API-шлюз.<br/>- Rate Limiting<br/>- Load Balancing<br/>- Authentication ")
+        Container(UserService, "Сервис пользователей.", "", "-Аутентификация.<br/>- Профиль.")
+        Container(CatalogService, "Сервис каталога мероприятий.", "", "- Список мероприятий.<br/>- Информация о мероприятии.<br/>- Схема зала.")
+        Container(BookingService, "Сервис бронирования мест.", "", "- Блокировка мест.<br/>- Бронирование.<br/>- Менеджмент бронирования.")
+        Container(PaymentService, "Сервис оплаты.", "", "- Платежный шлюз.<br/>- Обработка сообщений от платежного шлюза.<br/>- Возврат средств.")
+        Container(NotificationService, "Серис уведомлений.", "", "Рассылка сообщений:<br/>- Email<br/>- SMS<br/>- Push Notifications")
+    }
+    
+    Container_Boundary(c2, "Data & Cache") {
+        ContainerDb(postgreSQL, "Основная БД", "PostgreSQL", "- Пользователи<br/>- Бронирования<br/>-Мероприятия / места<br/>- Платежи")
+        ContainerDb(redis, "Redis cache", "Redis", "- Распределённый кэш<br/>- Блокировка мест.")
+        ContainerDb(elasticsearch, "Search", "Elasticsearch", "- Поиск мероприятий.")
+        Container(messageBroker, "Брокер сообщений.", "Kafka", "")
+        Container(storage, "Ресурсы", "S3 / CDN", "- Статическое описание мероприятий.<br/>- Схемы залов.<br/>- Билеты.")       
     }
 
-    System_Ext(banking_system, "Mainframe Banking System", "Stores all of the core banking information about customers, accounts, transactions, etc.")
+    Boundary(ext, "") {
+        System_Ext(extSystemPayment, "Payment Provider", "Инициирует списание средств и возвраты клиентам.")
+        System_Ext(extSystemIdentity, "Identity Provider", "Внешний сервис авторизации. Yandex, Google, Facebook, etc...")
+        System_Ext(extSystemNotification, "Notification Provider", "Передает Email / SMS / Push сообщения с электронными билетами для доставки.")
+    }      
 
-    Rel(customer, web_app, "Uses", "HTTPS")
-    UpdateRelStyle(customer, web_app, $offsetY="60", $offsetX="90")
-    Rel(customer, spa, "Uses", "HTTPS")
-    UpdateRelStyle(customer, spa, $offsetY="-40")
-    Rel(customer, mobile_app, "Uses")
-    UpdateRelStyle(customer, mobile_app, $offsetY="-30")
+    Container_Boundary(c3, "Monitoring & Observability") {
+        Container(prometheus, "Мониторинг.", "Prometheus + Grafana", "")
+        Container(elk, "Логирование.", "ELK stack", "")
+        Container(tracing, "Рапрседеленная трассировка.", "Jaeger", "")
+    }
 
-    Rel(web_app, spa, "Delivers")
-    UpdateRelStyle(web_app, spa, $offsetX="130")
-    Rel(spa, backend_api, "Uses", "async, JSON/HTTPS")
-    Rel(mobile_app, backend_api, "Uses", "async, JSON/HTTPS")
-    Rel_Back(database, backend_api, "Reads from and writes to", "sync, JDBC")
+    UpdateLayoutConfig($c4ShapeInRow="4", $c4BoundaryInRow="1")
 
-    Rel(email_system, customer, "Sends e-mails to")
-    UpdateRelStyle(email_system, customer, $offsetX="-45")
-    Rel(backend_api, email_system, "Sends e-mails using", "sync, SMTP")
-    UpdateRelStyle(backend_api, email_system, $offsetY="-60")
-    Rel(backend_api, banking_system, "Uses", "sync/async, XML/HTTPS")
-    UpdateRelStyle(backend_api, banking_system, $offsetY="-50", $offsetX="-140")
 ```
 
 - Схема C4: Context + Container (в diagrams/).
@@ -232,3 +225,37 @@ _Выбор БД с обоснованием, шардирование, кэши
 ## 5. Взаимодействие
 
 _Схема взаимодействия и API-контракты._
+
+## 6. Мониторинг и оповещения
+
+Ключевые метрики:
+1. Доля успешных блокировок мест 
+- Целевое значение: > 95%
+- Порог оповещения: < 90%
+
+2. Время подтверждения бронирования
+- Целевое значение: < 2 с
+- Порог оповещения: > 5 с
+
+3. Доля успешных платежей
+- Целевое значение: > 98%
+- Порог оповещения: < 95%
+
+4. Доля потерь при блокировке мест
+- Целевое значение: < 2%
+- Порог оповещения: > 5%
+
+5. Случаи двойного бронирования
+- Целевое значение: 0
+- Порог оповещения: > 0 (**КРИТИЧЕСКИЙ УРОВЕНЬ ТРЕВОГИ**)
+
+6. Латентсность API (перцентиль p99)
+- Seat API: < 200 мс
+- Lock API: < 500 мс
+- Booking API: < 1 с
+
+Дашборд:
+- Доступность мест на сеанс в реальном времени
+- Количество активных блокировок мест
+- Очередь обработки платежей
+- Частота ошибок по эндпоинтам

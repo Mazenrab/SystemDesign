@@ -1,0 +1,544 @@
+openapi: 3.0.0
+info:
+  title: Movie Catalog API
+  version: 1.0.0
+  description: Контракт сервиса каталога фильмов, расписания сеансов и схемы залов.
+paths:
+  /api/v1/movies:
+    get:
+      summary: Список фильмов
+      tags:
+        - Catalog
+      parameters:
+        - name: city
+          in: query
+          required: true
+          schema:
+            type: string
+          example: Mumbai
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          example: "2025-12-25"
+      responses:
+        '200':
+          description: Список фильмов успешно получен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  movies:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Movie'
+
+  /api/v1/movies/{movieId}/shows:
+    get:
+      summary: Сеансы для фильма
+      tags:
+        - Catalog
+      parameters:
+        - name: movieId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: city
+          in: query
+          required: true
+          schema:
+            type: string
+          example: Mumbai
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          example: "2025-12-25"
+      responses:
+        '200':
+          description: Расписание кинотеатров и сеансов успешно получено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  theaters:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Theater'
+
+  /api/v1/shows/{showId}/seats:
+    get:
+      summary: Схема мест и их статусы
+      tags:
+        - Catalog
+      parameters:
+        - name: showId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Схема зала и статусы мест успешно получены
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  layout:
+                    $ref: '#/components/schemas/Layout'
+                  seats:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Seat'
+
+  /api/v1/bookings/lock:
+    post:
+      summary: Заблокировать места (выбор пользователя)
+      tags:
+        - Booking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - showId
+                - seatIds
+                - userId
+              properties:
+                showId:
+                  type: string
+                seatIds:
+                  type: array
+                  items:
+                    type: string
+                  example: ["A1", "A2"]
+                userId:
+                  type: string
+      responses:
+        '200':
+          description: Места успешно временно заблокированы
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lockId:
+                    type: string
+                    format: uuid
+                  expiresAt:
+                    type: string
+                    format: date-time
+                    example: "2025-12-22T10:15:00Z"
+                  seats:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        price:
+                          type: number
+                  totalAmount:
+                    type: number
+                    example: 400
+        '409':
+          description: Конфликт. Одно или несколько мест уже заблокированы/заняты.
+
+  /api/v1/bookings/lock/{lockId}/extend:
+    put:
+      summary: Продлить время блокировки мест
+      tags:
+        - Booking
+      parameters:
+        - name: lockId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Блокировка успешно продлена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  expiresAt:
+                    type: string
+                    format: date-time
+                    example: "2025-12-22T10:20:00Z"
+        '404':
+          description: Идентификатор блокировки не найден
+        '410':
+          description: Срок действия блокировки уже истек (Gone)
+
+  /api/v1/bookings/lock/{lockId}:
+    delete:
+      summary: Отменить блокировку мест (пользователь сбросил выбор)
+      tags:
+        - Booking
+      parameters:
+        - name: lockId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Блокировка успешно снята
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+
+  /api/v1/bookings:
+    post:
+      summary: Создать бронирование (инициация заказа)
+      tags:
+        - Booking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - lockId
+                - paymentMethod
+              properties:
+                lockId:
+                  type: string
+                  format: uuid
+                paymentMethod:
+                  type: string
+                  enum: [CARD, UPI, NET_BANKING, WALLET]
+                  example: CARD
+      responses:
+        '201':
+          description: Бронирование создано, ожидает оплаты
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bookingId:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    example: PENDING
+                  paymentUrl:
+                    type: string
+                    format: uri
+                    example: "https://..."
+        '400':
+          description: Некорректный запрос (Bad Request)
+        '409':
+          description: Невалидная или истекшая блокировка мест (Lock Invalid)
+
+  /api/v1/bookings/{bookingId}:
+    get:
+      summary: Получить информацию о бронировании
+      tags:
+        - Booking
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Информация о бронировании успешно получена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    enum: [PENDING, CONFIRMED, CANCELLED]
+                  seats:
+                    type: array
+                    items:
+                      type: string
+                  amount:
+                    type: number
+                  showDetails:
+                    type: object
+                  paymentStatus:
+                    type: string
+                  ticket:
+                    type: object
+
+    delete:
+      summary: Отмена бронирования
+      tags:
+        - Booking
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Бронирование успешно отменено, инициирован возврат
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  refundId:
+                    type: string
+                  refundAmount:
+                    type: number
+                  status:
+                    type: string
+                    example: REFUND_INITIATED
+
+  /api/v1/bookings/{bookingId}/confirm:
+    post:
+      summary: Подтвердить бронирование (вызывается платежным вебхуком)
+      tags:
+        - Booking
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - paymentId
+                - status
+              properties:
+                paymentId:
+                  type: string
+                status:
+                  type: string
+                  enum: [SUCCESS, FAILED]
+                  example: SUCCESS
+      responses:
+        '200':
+          description: Бронирование успешно подтверждено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bookingStatus:
+                    type: string
+                    example: CONFIRMED
+                  ticketUrl:
+                    type: string
+                    format: uri
+
+  /api/v1/payments:
+    post:
+      summary: Инициализировать платеж напрямую
+      tags:
+        - Payment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - bookingId
+                - amount
+                - method
+              properties:
+                bookingId:
+                  type: string
+                  format: uuid
+                amount:
+                  type: number
+                method:
+                  type: string
+                  example: CARD
+      responses:
+        '200':
+          description: Платеж успешно инициализирован
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paymentId:
+                    type: string
+                  gatewayUrl:
+                    type: string
+                    format: uri
+                    example: "https://razorpay.com..."
+                  status:
+                    type: string
+                    example: INITIATED
+
+  /api/v1/payments/webhook:
+    post:
+      summary: Callback-вебхук от платежного шлюза
+      tags:
+        - Payment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - paymentId
+                - status
+              properties:
+                paymentId:
+                  type: string
+                status:
+                  type: string
+      responses:
+        '200':
+          description: Уведомление успешно обработано
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+                    example: true
+
+  /api/v1/payments/{paymentId}/refund:
+    post:
+      summary: Оформить возврат средств по платежу
+      tags:
+        - Payment
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - amount
+                - reason
+              properties:
+                amount:
+                  type: number
+                reason:
+                  type: string
+                  example: User cancelled the ticket
+      responses:
+        '200':
+          description: Запрос на возврат успешно принят шлюзом
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  refundId:
+                    type: string
+                  status:
+                    type: string
+                    example: PROCESSED
+                  estimatedDate:
+                    type: string
+                    format: date
+                    example: "2025-12-28"
+
+components:
+  schemas:
+    Movie:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        poster:
+          type: string
+          format: uri
+        rating:
+          type: number
+        languages:
+          type: array
+          items:
+            type: string
+
+    Theater:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        shows:
+          type: array
+          items:
+            $ref: '#/components/schemas/Show'
+
+    Show:
+      type: object
+      properties:
+        id:
+          type: string
+        time:
+          type: string
+          example: "18:30"
+        price:
+          type: number
+
+    Layout:
+      type: object
+      properties:
+        rows:
+          type: integer
+          example: 10
+        cols:
+          type: integer
+          example: 20
+
+    Seat:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "A1"
+        status:
+          type: string
+          enum: [AVAILABLE, BOOKED, LOCKED]
+        price:
+          type: number
+          example: 200
