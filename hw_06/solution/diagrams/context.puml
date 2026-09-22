@@ -1,0 +1,38 @@
+@startuml
+!include <C4/C4_Container>
+
+!define SPRITESURL https://raw.githubusercontent.com/rabelenda/cicon-plantuml-sprites/v1.0/sprites
+
+!includeurl SPRITESURL/redis.puml
+!includeurl SPRITESURL/postgresql.puml
+!includeurl SPRITESURL/kafka.puml
+!includeurl SPRITESURL/elasticsearch.puml
+
+
+title Контекст системы бронирования билетов на мероприятия
+
+LAYOUT_WITH_LEGEND()
+
+Person(personUser, "Покупатель", "Покупатель билетов. Пользователь, ищущий и покупающий билеты.")
+Person(personOrganizer, "Организатор", "Организатор мероприятий. Добавляет мероприятия и управляет залами.")
+Person(personController, "Контролер", "Контролер билетов. Проверяет и валидирует билеты на входе.")
+Person(personAdministrator, "Администратор", "Администратор системы. Сотрудник Tiketing System, настраивает лимиты и решает споры.")
+
+System(systemTicketingSystem, "Tiketing System", "Платформа бронирования билетов.\n\nПозволяет искать мероприятия, безопасно покупать билеты без риска двойных продаж и валидировать их на входе.")
+
+
+System_Ext(extSystemPayment, "Payment Provider", "Инициирует списание средств и возвраты клиентам.")
+System_Ext(extSystemIdentity, "Identity Provider", "Внешний сервис авторизации. Yandex, Google, Facebook, etc...")
+System_Ext(extSystemNotification, "Notification Provider", "Передает Email / SMS / Push сообщения с электронными билетами для доставки.")
+  
+
+
+Rel(personUser, systemTicketingSystem, "Ищет концерты, резервирует места, оплачивает заказы.")
+Rel(personOrganizer, systemTicketingSystem, "Заводит мероприятия, настраивает схемы залов.")
+Rel(personController, systemTicketingSystem, "Сканирует QR-коды для проверки статуса билета.")
+Rel(personAdministrator, systemTicketingSystem, "Модерирует события, меняет лимиты, разрешает спорные ситуации.")
+
+Rel(systemTicketingSystem, extSystemPayment, "Списание и возвраты средств клиента.")
+Rel(systemTicketingSystem, extSystemIdentity, "Внешний сервис авторизации.")
+Rel(systemTicketingSystem, extSystemNotification, "Передает Email/SMS/Push сообщения с электронными билетами для доставки.")
+@enduml
