@@ -121,43 +121,114 @@ _Выбор БД с обоснованием, шардирование, кэши
 
 ```mermaid
 erDiagram
-    Event ||--o{ Show : "имеет"
-    Venue ||--o{ Set_Scheme : "содержит"
-    Set_Scheme ||--o{ Seat : "включает"
-    Show }o--|| Venue : "проходит в"
-    Show ||--o{ ShowSeat : "содержит состояния мест"
-    Seat ||--o{ ShowSeat : "связано с"
+    user ||--o{ user_oauth_accounts : "Аутентифицируется через сторонних провайдеров"
+    user ||--o{ refresh_tokens : "Использует"
+    user ||--o{ booking : "Оформляет"
+
+    venue ||--o{ venue_zone : "Состоит из"
+    venue_zone ||--o{ venue_seat : "Состоит из"
+
+    performer ||--o{ event : "Выступает"
+    venue ||--o{ event : "Проходит на"
+
     
-    User ||--o{ Booking : "оформляет"
-    Booking ||--o{ BookingItem : "содержит позиции"
-    ShowSeat ||--o{ BookingItem : "привязано к"
-    Booking ||--o{ Payment : "имеет"
 
-    Booking }|..|{ OutboxEvent : "порождает события"
-    Payment }|..|{ OutboxEvent : "порождает события"
+    user {
+        uuid id PK
+        varchar email UK
+        varchar password_hash
+        varchar phone_number
+        varchar first_name
+        varchar last_name
+        enum role "CUSTOMER, ORGANIZER, CONTROLLER, ADMIN"
+        boolean is_active
+        boolean is_email_verified         
+        timestamp created_at
+        timestamp updated_at
+        jsonb metadata
+    }
 
-    Event {
+    user_oauth_accounts {
+        uuid id PK
+        uuid user_id FK
+        enum oauth_provider "YANDEX, GOOGLE, FACEBOOK"
+        varchar provider_user_id
+        timestamp created_at
+    } 
+
+    refresh_tokens {
+        uuid id PK
+        uuid user_id FK
+        varchar token_hash 
+        text device_info
+        varchar ip_address
+        timestamp created_at
+        timestamp expires_at
+        boolean is_revoked
+    }
+
+    venue {
+        uuid id PK
+        varchar name
+        varchar city 
+        varchar address
+        jsonb map_visual_schema
+        int total_capacity
+        timestamp created_at 
+    }
+
+    venue_zone {
+        uuid id PK
+        uuid venue_id FK
+        varchar name
+        boolean is_seating
+        jsonb zone_visual_schema
+        timestamp created_at 
+    }
+
+    venue_seat {        
+        uuid id PK
+        uuid venue_id FK
+        uuid venue_zone_id FK
+        varchar row_number
+        varchar seat_number
+        varchar map_element_id
+        varchar seat_type
+        timestamp created_at 
+    }
+
+    performer {
+        uuid id PK
+        varchar name
+        varchar genre
+        text description
+    }
+
+    event {
         uuid id PK
         varchar title
         text description
+        uuid performer_id FK
+        uuid venue_id FK
         varchar category
+        timestamp begin_time
+        timestamp end_time
+        numeric(10,2) price_min
+        numeric(10,2) price_max
+        enum status "DRAFT, ACTIVE, CANCELLED, PAST"
         timestamp created_at
     }
 
-    Venue {
-        uuid id PK
-        varchar name
-        varchar address
-        int total_capacity
-    }
 
-    Set_Scheme {
+
+
+    set_scheme {
         uuid id PK
         uuid venue_id FK
         varchar name
     }
 
-    Seat {
+    seat {
         uuid id PK
         uuid scheme_id FK
         varchar row_number
@@ -165,7 +236,7 @@ erDiagram
         varchar category "VIP, Standard"
     }
 
-    Show {
+    show {
         uuid id PK
         uuid event_id FK
         uuid venue_id FK
@@ -174,7 +245,7 @@ erDiagram
         timestamp created_at
     }
 
-    ShowSeat {
+    show_seat {
         uuid id PK
         uuid show_id FK
         uuid seat_id FK
@@ -185,18 +256,11 @@ erDiagram
         int version "Оптимистичная блокировка"
     }
 
-    User {
-        uuid id PK
-        varchar email UK
-        varchar phone
-        varchar name
-        timestamp created_at
-    }
 
     Booking {
         uuid id PK
         uuid user_id FK
-        varchar status "PENDING, CONFIRMED, CANCELLED"
+        enum status "PENDING, CONFIRMED, CANCELLED"
         decimal total_price
         timestamp created_at
         timestamp expires_at
