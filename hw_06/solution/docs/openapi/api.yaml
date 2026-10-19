@@ -15,6 +15,8 @@ paths:
       summary: Регистрация нового пользователя (Email/Password)
       tags:
         - Authentication
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
       requestBody:
         required: true
         content:
@@ -74,6 +76,8 @@ paths:
       summary: Аутентификация по Email/Password
       tags:
         - Authentication
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
       requestBody:
         required: true
         content:
@@ -112,6 +116,8 @@ paths:
       description: Клиент передает токен (Id Token / Access Token), полученный от SDK провайдера.
       tags:
         - Authentication
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
       requestBody:
         required: true
         content:
@@ -163,6 +169,8 @@ paths:
       summary: Обновление Access Token с помощью Refresh Token
       tags:
         - Authentication
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
       requestBody:
         required: true
         content:
@@ -208,6 +216,8 @@ paths:
       description: Возвращает данные пользователя на основе переданного Bearer токена.
       tags:
         - Authentication
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
       security:
         - BearerAuth: []
       responses:
@@ -240,6 +250,8 @@ paths:
   # ==========================================
   
   /api/v1/organizer/venues:
+    parameters:
+      - $ref: '#/components/parameters/CorrelationIdParam'        
     get:
       summary: "Получение списка концертных площадок"
       description: Возвращает список площадок с фильтрацией по городу и названию, поддерживая постраничную пагинацию.
@@ -356,6 +368,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
         - name: venueId
           in: path
           required: true
@@ -402,6 +415,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
         - name: venueId
           in: path
           required: true
@@ -460,6 +474,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
         - name: venueId
           in: path
           required: true
@@ -523,6 +538,8 @@ paths:
         - Organizer
       security:
         - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
       requestBody:
         required: true
         content:
@@ -603,6 +620,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
         - name: eventId
           in: path
           required: true
@@ -659,6 +677,8 @@ paths:
         - Organizer
       security:
         - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
       requestBody:
         required: true
         content:
@@ -700,6 +720,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
         - name: performerId
           in: path
           required: true
@@ -748,6 +769,7 @@ paths:
       tags:
         - Organizer
       parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
         - name: venueId
           in: path
           required: true
@@ -791,6 +813,7 @@ paths:
       tags:
         - All users
       parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
         - name: q
           in: query
           required: true
@@ -831,6 +854,7 @@ paths:
       tags:
         - All users
       parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
         - name: q
           in: query
           required: false
@@ -960,6 +984,7 @@ paths:
       tags:
         - All users
       parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
         - name: eventId
           in: path
           required: true
@@ -996,6 +1021,7 @@ paths:
       tags:
         - All users
       parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
         - name: venueId
           in: path
           required: true
@@ -1053,6 +1079,7 @@ paths:
       tags:
         - All users
       parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
         - name: eventId
           in: path
           required: true
@@ -1106,14 +1133,15 @@ paths:
 
   /api/v1/events/{eventId}/zones/{venueZoneId}/seats/status:
     get:
-      summary: "[Резервный] Получение статусов мест методом Pooling"
+      summary: "Получение статусов мест методом Pooling (резерв)"
       description: |
         Используется в качестве graceful degradation, если SSE-соединение недоступно.
-        Фронтенд должен опрашивать этот эндпоинт с интервалом в 2–5 секунд.
+        Фронтенд должен опрашивать этот эндпоинт с интервалом в 5–30 секунд.
         Для оптимизации трафика рекомендуется передавать таймстемп `since`, чтобы сервер возвращал только изменения с момента последнего запроса.
       tags:
         - All users
       parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
         - name: eventId
           in: path
           required: true
@@ -1176,16 +1204,23 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
-
-
-
 components:
   securitySchemes:
     BearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      
+  
+  parameters:
+    CorrelationIdParam:
+      name: Correlation-ID
+      in: header
+      description: Уникальный идентификатор запроса (UUID) для сквозного логирования
+      required: true
+      schema:
+        type: string
+        format: uuid
+  
   responses:
     TooManyRequests:
       description: Превышен лимит запросов (Rate Limit). Повторите попытку позже.
@@ -1654,4 +1689,4 @@ components:
           type: string
           example: "seat_update"
         data:
-          $ref: '#/components/schemas/SeatStatusItem'
+          $ref: '#/components/schemas/SeatStatusItem'          

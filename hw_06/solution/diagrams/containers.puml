@@ -1,0 +1,132 @@
+@startuml
+!include <C4/C4_Container>
+
+!define SPRITESURL https://raw.githubusercontent.com/rabelenda/cicon-plantuml-sprites/v1.0/sprites
+
+!includeurl SPRITESURL/redis.puml
+!includeurl SPRITESURL/postgresql.puml
+!includeurl SPRITESURL/kafka.puml
+!includeurl SPRITESURL/elasticsearch.puml
+
+
+title Диаграмма взаимодействия контейнеров системы бронирования билетов на мероприятия
+
+LAYOUT_WITH_LEGEND()
+
+Container_Boundary(users, "Users") {
+    Person(personUser, "Покупатель", "Покупатель билетов. Пользователь, ищущий и покупающий билеты.")
+    Person(personOrganizer, "Организатор", "Организатор мероприятий. Добавляет мероприятия и управляет залами.")
+    Person(personController, "Контролер", "Контролер билетов. Проверяет и валидирует билеты на входе.")
+    Person(personAdministrator, "Администратор", "Администратор системы. Сотрудник Tiketing System, настраивает лимиты и решает споры.")
+}      
+
+
+Container_Boundary(edge, "Edge layer") {
+        System_Ext(edgeLayer, "Edge-слой", "CDN:%n()- app static files;%n()- изображения;%n()- схемы залов;%n()- кэш популярных поисковых запросов.")
+}      
+
+
+Container_Boundary(c0, "Client layer") {
+    Container(webApp, "Веб-сайт", "JavaScript", "Веб-сайт для бронирования билетов покупателями.")
+    Container(mobileApp, "Мобильное бронирование", "Android/iOS", "Мобильное приложение для бронирования билетов покупателями.")
+    Container(controllerApp, "Мобильное QR-сканирование", "Android/iOS", "Мобильное приложение для проверки валидности билетов.")
+    Container(webAdminPortal, "Веб-сайт", "", "Веб-портал для администрирования.")
+}
+
+Container_Boundary(c1, "Service layer") {
+
+    Container(ApiGateway, "API Gateway", "Kong / Nginx", "API-шлюз.%n()- Routing%n()- Rate Limiting%n()- Load Balancing%n()- Authentication")
+    Container(UserService, "User Service", "", "-Аутентификация.%n()- Профиль.")
+    Container(CatalogService, "Catalog Service", "", "- Список мероприятий.%n()- Информация о мероприятии.%n()- Схема зала.")
+    Container(SeatService, "Seat Service", "", "Доступность мест online.")
+    Container(BookingService, "Booking Service", "", "- Блокировка мест.%n()- Бронирование.%n()- Менеджмент бронирования.")
+    Container(PaymentService, "Payment Service", "", "- Платежный шлюз.%n()- Обработка сообщений от платежного шлюза.%n()- Возврат средств.")
+    Container(NotificationService, "Notification Service", "", "Рассылка сообщений:%n()- Email%n()- SMS%n()- Push Notifications")
+    Container(TicketService, "Ticket Service", "", "- Генерация билета для оплаченого заказа: QR + PDF.%n() - Проверка битлета на входе.")
+    Container(SerachService, "Search Service", "", "Поисковый сервис: поиск мероприятий по пользовательским критериям.")
+    Container(VirtualWaitingRoomService, "Virtual Waiting Room", "", "Ограничение доступа к сервису бронирования на страте продаж сверхпопулярных мероприятий.")
+
+    ContainerDb(postgreSQL, "PostgreSQL Cluster", "PostgreSQL", "- Пользователи%n()- Бронирования%n()-Мероприятия / места%n()- Платежи")
+    ContainerDb(redis, "Redis cache", "Redis", "- Распределённый кэш%n()- Блокировка мест.%n()-Виртуальная очередь.")
+    ContainerDb(elasticSearch, "Search", "Elasticsearch", "- Поиск мероприятий.")
+    Container(messageBroker, "Брокер сообщений.", "Kafka", "")
+    Container(s3Storage, "Ресурсы", "S3 / CDN", "- Статические изображения мероприятий. Фото площадок, артистов,  и т.д.%n()- Билеты.")       
+}
+
+Container_Boundary(ext, "") {
+    System_Ext(extSystemPayment, "Payment Provider (Main + Reserv)", "Инициирует списание средств и возвраты клиентам.")
+    System_Ext(extSystemIdentity, "Identity Provider", "Внешний сервис аутентификации. Yandex, Google, Facebook, etc...")
+    System_Ext(extSystemEmailNotification, "Email Notification Provider", "Передает Email сообщения для доставки конечным пользователям.")
+    System_Ext(extSystemSmsNotification, "Sms Notification Provider", "Передает SMS сообщения для доставки конечным пользователям.")
+    System_Ext(extSystemPushNotification, "Push Notification Provider", "Push сообщения для доставки конечным пользователям.")
+    System_Ext(extSystemPACS, "Physical Access Control System (PACS)", "СКУД- устройство.")
+}      
+
+Rel(personUser, edgeLayer, "")
+Rel(personOrganizer, edgeLayer, "")
+Rel(personController, edgeLayer, "")
+Rel(personAdministrator, edgeLayer, "")
+
+Rel(edgeLayer, webApp, "")
+Rel(edgeLayer, mobileApp, "")
+Rel(edgeLayer, controllerApp, "")
+Rel(edgeLayer, webAdminPortal, "")
+
+Rel(webApp, ApiGateway, "")
+Rel(mobileApp, ApiGateway, "")
+Rel(controllerApp, ApiGateway, "")
+Rel(webAdminPortal, ApiGateway, "")
+
+Rel(extSystemIdentity, ApiGateway, "Внешняя аутентификация")
+Rel(ApiGateway, UserService, "Аутентифкация")
+BiRel(UserService, redis, "Чтение/запись пользовательских данных в кэш. Профиль пользователя.")
+BiRel(UserService, postgreSQL, "Чтение/запись пользовательских данных в кэш. Профиль пользователя.")
+
+Rel(ApiGateway, VirtualWaitingRoomService, "")
+Rel(VirtualWaitingRoomService, redis, "")
+
+Rel(ApiGateway, PaymentService, "Запрос на формирование платежа." )   
+Rel(PaymentService, extSystemPayment, "Формирование запроса на оплату/возврат в платежный шлюз. Обработка ответа шлюза." )
+Rel(PaymentService, messageBroker, "payment.success%n()payment.failed" )
+
+Rel(ApiGateway, SerachService, "Поисковый запрос." )
+Rel(messageBroker, SerachService, "catalog.event-updated%n()catalog.venue-updated%n()catalog.performer-updated%n()etc...")
+Rel(SerachService, elasticSearch, "Запрос в БД" )
+
+Rel(ApiGateway, SeatService, "SSE/ Pooling состояния мест по зоне/площадке." )
+Rel(SeatService, redis, "Чтение статуса мест по площадкам на конкретные мероприятия." )
+Rel(messageBroker, SeatService, "booking.seat-reserved%n()booking.seat-released%n()booking.seat-booked")
+
+Rel(ApiGateway, CatalogService, "" )
+Rel(CatalogService, redis, "чтение/запись данных в кэш" )
+BiRel(CatalogService, postgreSQL, "чтение/запись данных в БД" )
+BiRel(CatalogService, s3Storage, "чтение/запись данных в хранилище" )
+
+Rel(ApiGateway, BookingService, "Резервирование мест" )
+Rel(BookingService, redis, "Блокировка 10 минут" )
+Rel(BookingService, messageBroker, "bookingseat-reserved%n()booking.seat-released%n()booking.seat-booked")
+Rel(messageBroker, BookingService, "payment.success%n()payment.failed")
+Rel(BookingService, postgreSQL, "Запись заказа" )
+
+Rel(messageBroker, TicketService, "payment.success")
+Rel(TicketService, messageBroker, "ticket.generated")
+Rel(TicketService, s3Storage, "Генерация PDF")
+Rel(TicketService, postgreSQL, "чтение для генерации PDF")
+Rel(postgreSQL, TicketService,"Запись статуса при проходе")
+
+
+Rel(messageBroker, NotificationService, "Сообщения требующие оповещения")
+
+Rel(NotificationService, extSystemEmailNotification, "Сообщения требующие оповещения")
+Rel(NotificationService, extSystemSmsNotification, "Сообщения требующие оповещения")
+Rel(NotificationService, extSystemPushNotification, "Сообщения требующие оповещения")
+
+
+Rel(extSystemPACS, ApiGateway, "Запрос прохода по билету")
+Rel(ApiGateway, TicketService, "Проход по билету.")
+
+
+Lay_D(c1, ext)
+
+
+@enduml
