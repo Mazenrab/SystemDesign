@@ -522,7 +522,7 @@ paths:
                     error: "VALIDATION_FAILED"
                     message: "Ошибка валидации."
                     details:
-                      schema: "parse error"
+                      schema: "parse error" 
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1014,10 +1014,10 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
-  /api/v1/venues/{venueId}/zones/{venueZoneId}/seats:
+  /api/v1/venues/{venueId}/zones/{venueZoneId}/seats/v{version}:
     get:
       summary: "Получение списка мест в зоне площадки"
-      description: "Возвращает статический список физических мест (инвентарь площадки) внутри конкретного сектора. Для получения динамических статусов занятости мест конкретного мероприятия используйте Event API."
+      description: "Возвращает статический список физических мест внутри конкретного сектора. Для получения динамических статусов занятости мест конкретного мероприятия используйте Event API."
       tags:
         - All users
       parameters:
@@ -1037,6 +1037,13 @@ paths:
             type: string
             format: uuid
           example: "9e8d7c6b-5432-10fe-ba98-fedcba987654"
+        - name: version
+          in: path
+          required: true
+          description: Номер версии схемы.
+          schema:
+            type: integer
+          example: 5
       responses:
         '200':
           description: Успешное получение списка мест в зоне.
@@ -1074,10 +1081,12 @@ paths:
         **Формат стрима (text/event-stream):**
         ```ev
         event: seat_update
-        data: {"map_element_id": "seat_row3_space14", "status": "reserved", "expires_at": "2026-10-13T23:25:00Z"}
+        data: [{"map_element_id": "seat_row3_space14", "status": "reserved", "expires_at": "2026-10-13T23:25:00Z"}]
         ```
       tags:
         - All users
+      security:
+        - BearerAuth: []
       parameters:
         - $ref: '#/components/parameters/CorrelationIdParam'        
         - name: eventId
@@ -1140,8 +1149,10 @@ paths:
         Для оптимизации трафика рекомендуется передавать таймстемп `since`, чтобы сервер возвращал только изменения с момента последнего запроса.
       tags:
         - All users
+      security:
+        - BearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/CorrelationIdParam'        
+        - $ref: '#/components/parameters/CorrelationIdParam'
         - name: eventId
           in: path
           required: true
@@ -1204,6 +1215,615 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
+  /api/v1/bookings/lock:
+    post:
+      summary: Резервирование мест на конкретное мероприятие
+      tags:
+      - All users
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+               oneOf:
+                - $ref: '#/components/schemas/CreateLockBySeatsRequest'
+                - $ref: '#/components/schemas/CreateLockByZoneRequest'
+      responses:
+        '201':
+          description: Места успешно зарезервированы.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateLockBySeatsResponse'
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Места уже кем-то зарезервированны.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                InvalidToken:
+                  summary: Места уже зарезервированы
+                  value:
+                    error: "VALIDATION_FAILED"
+                    message: "Все или часть мест уже были зарезервированны."
+                    details:
+                        seats:['seat_1', 'seat_2']
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/bookings/lock/{lockId}:
+    delete:
+      summary: Отмена резервирования мест
+      tags:
+        - All users
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+        - name: lockId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Резерв снят
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                      type: boolean
+                      example: true        
+
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: Резервирование не найдено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                EventNotFound:
+                  value:
+                    error: "NOT_FOUND"
+                    message: "Запрошенный резерв не найден."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/bookings:
+    post:
+      summary: Оформление нового заказа
+      tags:
+        - All users
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookingRequest'
+      responses:
+        '201':
+          description: Заказ успешно создан и ожидает оплаты.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bookingId:
+                    type: string
+                    format: uuid
+                    example: "9ba85f64-1111-4a22-b5de-2c963f66c223"
+                  status:
+                    type: string
+                    enum: [PENDING_PAYMENT, PROCESSING, PAID]
+                    example: "PENDING_PAYMENT"
+                  paymentUrl:
+                    type: string
+                    format: uri
+                    description: URL платежного шлюза для перенаправления пользователя (если применимо).
+                    example: "https://stripe.com"
+                  expiresAt:
+                    type: string
+                    format: date-time
+                    description: Таймстамп, до которого заказ должен быть оплачен, иначе он аннулируется.
+                    example: "2026-10-24T21:45:00Z"
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: Резервирование не найдено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                EventNotFound:
+                  value:
+                    error: "NOT_FOUND"
+                    message: "Запрошенный резерв не найден."
+        '409':
+          description: Время резерва истекло.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                InvalidToken:
+                  summary: Время резерва истекло
+                  value:
+                    error: "VALIDATION_FAILED"
+                    message: "Резев аннулирован."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/bookings/{bookingId}:
+    get:
+      summary: Получение информации о бронировании
+      tags:
+        - All users
+      description: Возвращает актуальное состояние заказа, информацию о местах и статус билета.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Информация о заказе успешно получена.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status, seats, amount, showDetails, paymentStatus]
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                    example: "9ba85f64-1111-4a22-b5de-2c963f66c223"
+                  status:
+                    type: string
+                    enum: [PENDING, CONFIRMED, CANCELLED, FAILED]
+                    example: "CONFIRMED"
+                  seats:
+                    type: array
+                    items:
+                      type: string
+                    example: ["Row 5, Seat 12", "Row 5, Seat 13"]
+                  amount:
+                    type: string
+                    format: float
+                    example: "150.00"
+                  showDetails:
+                    type: object
+                    required: [eventId, title, startAt]
+                    properties:
+                      eventId:
+                        type: string
+                        format: uuid
+                        example: "7ca21f11-1234-4a22-b5de-8c963f66b112"
+                      title:
+                        type: string
+                        example: "Шоу уральские пельмени"
+                      startAt:
+                        type: string
+                        format: date-time
+                        example: "2026-11-15T19:00:00Z"
+                  paymentStatus:
+                    type: string
+                    enum: [PENDING, SUCCESS, FAILED, REFUNDED]
+                    example: "SUCCESS"
+                  ticket:
+                    type: object
+                    properties:
+                      ticketId:
+                        type: string
+                        format: uuid
+                      qrCodeData:
+                        type: string
+                        description: Ed25519 подпись или токен для QR-кода
+                        example: "ed25519-signature-string..."
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/Forbidden'
+          description: Бронирование не найдено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                EventNotFound:
+                  value:
+                    error: "NOT_FOUND"
+                    message: "Бронирование не найдено."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+                    
+
+    delete:
+      summary: Отмена бронирования (Refund)
+      tags:
+        - All users
+      description: Отменяет заказ, снимает резерв мест и инициирует возврат средств.
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Заказ успешно отменен, запущен процесс возврата денег.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [refundId, refundAmount, status]
+                properties:
+                  refundId:
+                    type: string
+                    format: uuid
+                    example: "rf_123456789"
+                  refundAmount:
+                    type: number
+                    format: float
+                    example: 150.00
+                  status:
+                    type: string
+                    enum: [CANCELLED]
+                    example: "CANCELLED"
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/Forbidden'
+          description: Бронирование не найдено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                EventNotFound:
+                  value:
+                    error: "NOT_FOUND"
+                    message: "Бронирование не найдено."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/bookings/{bookingId}/confirm:
+    post:
+      summary: Подтверждение оплаты
+      tags:
+        - All users
+      description: Эндпоинт для подтверждения оплаты. Вызывается обработчиком вебхуков платежной системы.
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [paymentId, status]
+              properties:
+                paymentId:
+                  type: string
+                  example: "ch_3Mv9X2LkdIwX7ixS"
+                status:
+                  type: string
+                  enum: [SUCCESS, FAILED]
+                  example: "SUCCESS"
+      responses:
+        '200':
+          description: Заказ успешно переведен в статус CONFIRMED, сгенерирована ссылка на билет.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [bookingStatus, ticketUrl]
+                properties:
+                  bookingStatus:
+                    type: string
+                    enum: [CONFIRMED]
+                    example: "CONFIRMED"
+                  ticketUrl:
+                    type: string
+                    format: uri
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/Forbidden'
+          description: Бронирование не найдено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                EventNotFound:
+                  value:
+                    error: "NOT_FOUND"
+                    message: "Бронирование не найдено."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    
+  /api/v1/payments:
+    post:
+      summary: Создает платежную сессию в системе и регистрирует транзакцию на стороне платежного шлюза
+      tags:
+        - All users
+      description: Создает платежную сессию в системе и регистрирует транзакцию на стороне платежного шлюза. Возвращает ссылку на форму оплаты (gatewayUrl), куда необходимо перенаправить пользователя.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [bookingId, amount, method, currency]
+              properties:
+                bookingId:
+                  type: string
+                  format: uuid
+                  description: Идентификатор созданного ранее бронирования.
+                  example: "9ba85f64-1111-4a22-b5de-2c963f66c223"
+                amount:
+                  type: string
+                  format: float
+                  description: Сумма к оплате. Должна строго совпадать с полной стоимостью заказа (amount в booking).
+                  example: 150.00
+                currency:
+                  type: string
+                  description: Трехзначный код валюты (ISO 4217).
+                  example: "RUB"
+                method:
+                  type: string
+                  enum: [CARD, NET_BANKING, WALLET, UPI]
+                  description: Предпочтительный платежный инструмент.
+                  example: "CARD"
+      responses:
+        '201':
+          description: Платежная сессия успешно инициализирована.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [paymentId, gatewayUrl, status]
+                properties:
+                  paymentId:
+                    type: string
+                    format: uuid
+                    description: Внутренний ID платежа в нашей системе.
+                    example: "9ba85f64-1111-4a22-b5de-2c963f66c223"
+                  gatewayUrl:
+                    type: string
+                    format: uri
+                    description: URL-адрес платежной страницы шлюза для редиректа пользователя.
+                    example: "https://razorpay.com"
+                  status:
+                    type: string
+                    enum: [INITIATED]
+                    example: "INITIATED"
+        '400':
+          description: Неверные входные данные или сумма не совпадает со стоимостью заказа.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/Forbidden'
+          description: Бронирование не найдено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                EventNotFound:
+                  value:
+                    error: "NOT_FOUND"
+                    message: "Бронирование не найдено."
+        '409':
+          description: Конфликт. Для данного bookingId уже существует активный или успешно завершенный платеж.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                InvalidToken:
+                  summary: Для данного bookingId уже существует активный или успешно завершенный платеж.
+                  value:
+                    error: "VALIDATION_FAILED"
+                    message: "Резев аннулирован."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/payments/webhook:
+    post:
+      summary: Принимает уведомления от платежного шлюза о смене статуса транзакции (успех/провал).
+      tags:
+        - All users
+      description:  Принимает уведомления от платежного шлюза о смене статуса транзакции (успех/провал). Должен обрабатывать запросы максимально быстро (возвращать 200 ACK) и валидировать криптографическую подпись шлюза в заголовках.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [paymentId, status]
+              properties:
+                paymentId:
+                  type: string
+                  format: uuid
+                  description: Внутренний или внешний (ID шлюза) идентификатор транзакции.
+                  example: "9ba85f64-1111-4a22-b5de-2c963f66c223"
+                status:
+                  type: string
+                  enum: [SUCCESS, FAILED, CHARGEBACK]
+                  description: Статус проведения операции на стороне шлюза.
+                  example: "SUCCESS"
+                gatewayTransactionId:
+                  type: string
+                  description: Уникальный ID транзакции в самом банке/шлюзе (для фин. аудита).
+                  example: "razorpay_trx_99210"
+      responses:
+        '200':
+          description: Вебхук успешно принят и передан в обработку.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received]
+                properties:
+                  received:
+                    type: boolean
+                    example: true
+
+  /api/v1/payments/{paymentId}/refund:
+    post:
+      summary: Инициирует возврат
+      tags:
+        - All users
+      description: Инициирует полный или частичный возврат средств по ранее успешно проведенному платежу.
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: "9ba85f64-1111-4a22-b5de-2c963f66c223"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, reason]
+              properties:
+                amount:
+                  type: string
+                  format: float
+                  description: Сумма возврата (может быть меньше исходной при частичном возврате или сервисных сборах).
+                  example: "150.00"
+                reason:
+                  type: string
+                  description: Причина отмены платежа (для логов и аналитики).
+                  example: "USER_CANCELLED_RESERVATION"
+      responses:
+        '200':
+          description: Запрос на возврат средств успешно отправлен в банк-эквайер.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [refundId, status, estimatedDate]
+                properties:
+                  refundId:
+                    type: string
+                    format: uuid
+                    example: "rf_82319df0-3122-491a"
+                  status:
+                    type: string
+                    enum: [PENDING, PROCESSED]
+                    example: "PENDING"
+                  estimatedDate:
+                    type: string
+                    format: date
+                    description: Предполагаемая дата зачисления средств на карту пользователя (обычно от 3 до 5 рабочих дней).
+                    example: "2026-10-29"
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/Forbidden'
+          description: Указанный paymentId не найден в системе.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                EventNotFound:
+                  value:
+                    error: "NOT_FOUND"
+                    message: "Бронирование не найдено."
+        '422':
+          description: Невозможно выполнить возврат (например, сумма возврата превышает сумму исходной транзакции).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -1220,7 +1840,16 @@ components:
       schema:
         type: string
         format: uuid
-  
+    IdempotencyKeyParam:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Ключ идемпотентности для дедупликации.
+      schema:
+        type: string
+        format: uuid
+        example: "8e03978e-40d5-43e8-bc93-6894a57f9324"     
+
   responses:
     TooManyRequests:
       description: Превышен лимит запросов (Rate Limit). Повторите попытку позже.
@@ -1690,3 +2319,128 @@ components:
           example: "seat_update"
         data:
           $ref: '#/components/schemas/SeatStatusItem'          
+          
+    CreateLockBySeatsRequest:
+      type: object
+      required: [eventId, seats]
+      properties:
+        eventId:
+          type: string
+          format: uuid
+          description: Идентификатор мероприятия.
+        seats:
+          type: array
+          description: Список резервируемых мест.
+          items:
+            type: string
+            format: uuid
+            description: Идентификатор места.
+    CreateLockByZoneRequest:
+      type: object
+      required: [eventId, zoneId, qnty ]
+      properties:
+        eventId:
+          type: string
+          format: uuid
+          description: Идентификатор мероприятия.
+        zoneId:
+          type: string
+          format: uuid
+          description: Идентификатор зоны (должна быть зона свободного размещения).
+        qnty:
+          type: integer
+          minimum: 1
+    CreateLockBySeatsResponse:
+      type: object
+      required: [lock_id]
+      properties:
+        lock_id:
+          type: string
+          format: uuid
+          example: "9e8d7c6b-5432-10fe-ba98-fedcba987654"
+        expires_at:
+          type: string
+          format: date-time
+          example: "2026-10-13T12:05:00Z"
+        total_amoun:
+          type: string
+          example: "5000"
+        seats:
+          type: array
+          description: Флаг наличия сидячих мест. Если false — это танцпол/фан-зона.
+          items:
+            type: object 
+            properties:
+              seat_id: 
+                type: string
+                format: uuid
+                description: Идентификатор места.
+                example: "9e8d7c6b-5432-10fe-ba98-fedcba987654"
+              price:
+                type: string
+                description: Стоимость места.
+                example: "5000"
+    CreateBookingRequest:
+      type: object
+      required:
+        - lockId
+        - paymentMethod
+        - priceDetails
+        - customerInfo
+      properties:
+        lockId:
+          type: string
+          format: uuid
+          description: Id резерва .
+          example: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        paymentMethod:
+          type: string
+          enum: [CARD, SBER_PAY, SPB_PAY, ALTERNATIVE]
+          description: Выбранный способ оплаты.
+          example: "CARD"
+        promocode:
+          type: string
+          description: Промокод для расчета скидки (если применим).
+          example: "BIG20"
+        priceDetails:
+          type: object
+          required:
+            - expectedTotal
+            - currency
+          description: Проверка стоимости на стороне клиента (защита от изменения цен «на лету»).
+          properties:
+            expectedTotal:
+              type: string
+              description: Итоговая сумма, которую пользователь видит на экране перед нажатием кнопки оплаты.
+              example: "150.00"
+            currency:
+              type: string
+              description: Трехзначный код валюты (ISO 4217).
+              example: "RUB"
+        customerInfo:
+          type: object
+          required:
+            - email
+            - phone
+            - firstName
+            - middleName
+            - lastName
+          description: Персональные данные покупателя для фиксации в билете и отправки чека.
+          properties:
+            email:
+              type: string
+              format: email
+              example: "user@example.com"
+            phone:
+              type: string
+              description: Номер телефона в международном формате для экстренных уведомлений.
+              example: "+1234567890"
+            firstName:
+              type: string
+              example: "Иван"
+            middleName:
+              type: string
+              example: "Иванович"
+            lastName:
+              type: string
+              example: "Иванов"
