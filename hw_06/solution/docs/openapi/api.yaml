@@ -1478,7 +1478,6 @@ paths:
                     message: "Бронирование не найдено."
         '429':
           $ref: '#/components/responses/TooManyRequests'
-                    
 
     delete:
       summary: Отмена бронирования (Refund)
@@ -1824,6 +1823,174 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
+  /api/v1/controllers/tickets/validate:
+    post:
+      summary: Ручная валидация билета контроллером
+      tags:
+        - Controller
+      description: Используется мобильным приложением стюарда/контроллера для ручной проверки QR-кода на входе.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qrData, controllerId]
+              properties:
+                qrData:
+                  type: string
+                  description: Считанная Ed25519 подпись из QR-кода
+                controllerId:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Билет распознан и он валидный для прохода
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  is_valid:
+                    type: boolean
+                    description: Билет валиден
+                    example: true
+                  status: 
+                    type: string
+                    enum: [ALLOWED, NOT_ALLOWED]
+                    description: Допустим ли проход по билету
+                    example: "ALLOWED"
+                  ticket_info:
+                    type: object
+                    properties:
+                      event_name:
+                        type: string
+                      seat_id: 
+                        type: string
+                        format: uuid
+                      seat_info:
+                        type: string
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Билет не найден в системе.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                TicketNotFound:
+                  value:
+                    error: "NOT_FOUND"
+                    message: "Билет не найден."
+        '422':
+          description: Билет уже был использован.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                TicketNotFound:
+                  value:
+                    error: "VALIDATION_FAILED"
+                    message: "Билет уже был использован."
+                    details:
+                      invalidated_at: "2026-11-15T19:00:00Z"
+                      device_id: "7ca21f11-1234-4a22-b5de-8c963f66b112"
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+                        
+  /api/v1/tickets/gate-pass:
+    post:
+      summary: Регистрация прохода через турникет СКУД
+      tags:
+        - Device
+      description: Метод для автоматических гейтов/турникетов. Возвращает команду на открытие физического реле.
+      parameters:
+        - $ref: '#/components/parameters/ApiKeyParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qrData]
+              properties:
+                qrData:
+                  type: string
+                gateId:
+                  type: string
+                  description: Идентификатор конкретного турникета/валидатора
+                zoneId:
+                  type: string
+                  description: Трибуна/сектор стадиона (для валидации зоны доступа)
+      responses:
+        '200':
+          description: Билет считан.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatePassResponse'
+        '401':
+          description: ApiKey not valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'                
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      
+  /api/v1/tickets/{gateId}/gate-pass:
+    post:
+      summary: Регистрация прохода через турникет СКУД c привязкой турникета
+      tags:
+        - Device
+      description: Метод для автоматических гейтов/турникетов. Возвращает команду на открытие физического реле.
+      parameters:
+        - $ref: '#/components/parameters/ApiKeyParam'
+        - name: gateId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qrData, gateId]
+              properties:
+                qrData:
+                  type: string
+                gateId:
+                  type: string
+                  description: Идентификатор конкретного турникета/валидатора
+                zoneId:
+                  type: string
+                  description: Трибуна/сектор стадиона (для валидации зоны доступа)
+      responses:
+        '200':
+          description: Билет считан.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatePassResponse'
+        '401':
+          description: ApiKey not valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'                
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -1849,7 +2016,13 @@ components:
         type: string
         format: uuid
         example: "8e03978e-40d5-43e8-bc93-6894a57f9324"     
-
+    ApiKeyParam:
+      name: Api-Key
+      in: header
+      description: Ключ площадки
+      required: true
+      shema:
+        type: string
   responses:
     TooManyRequests:
       description: Превышен лимит запросов (Rate Limit). Повторите попытку позже.
@@ -2380,6 +2553,7 @@ components:
                 type: string
                 description: Стоимость места.
                 example: "5000"
+
     CreateBookingRequest:
       type: object
       required:
@@ -2444,3 +2618,16 @@ components:
             lastName:
               type: string
               example: "Иванов"
+    GatePassResponse:
+      type: object
+      required: [is_valid, status]
+      properties:
+        is_valid:
+          type: boolean
+          description: Билет валиден
+          example: true
+        status: 
+          type: string
+          enum: [ALLOWED, NOT_ALLOWED]
+          description: Допустим ли проход по билету
+          example: "ALLOWED"
