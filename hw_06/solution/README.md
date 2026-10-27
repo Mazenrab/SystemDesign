@@ -40,8 +40,7 @@ _Система управления мероприятиями — билеты
 |[ADR-001](./docs/adr/adr_001_architecture_style.md)|Выбрана микросервисная асинхронная архитектура (event-driven + CQRS). |
 |[ADR-002](./docs/adr/adr_002_interservice_communication.md)| Синхронные межсервисные взаимодействия: **gRPC**. Асинхронное межсервисное взаимодействие: **EDA на Kafka**.|
 |[ADR-003](./docs/adr/adr_003_database_selection.md)|В качестве СУБД для у правления резервированием и бронированием мест выбрана **PostgreSQL**.|
-|[ADR-004](./docs/adr/adr_004_distributed_transactions.md)|Управление распределенными транзакциями: паттерн Saga.
-|
+|[ADR-004](./docs/adr/adr_004_distributed_transactions.md)|Управление распределенными транзакциями: паттерн Saga.|
 |[ADR-005](./docs/adr/adr_005_caching_strategy.md.md)|Стратегия кэширования для каталога мероприятий: Redis + CDN для схем площадок.|
 |[ADR-006](./docs/adr/adr_006_seat_reservation.md)|Резервирование мест: Redis блокировка + статус в PostgreSQL.|
 
