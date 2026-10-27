@@ -1,0 +1,2633 @@
+openapi: 3.0.3
+info:
+  title: Ticket API
+  version: 1.0.0
+  description: API для взаимодействия с системой бронирования билетов.
+paths:
+
+  # ==========================================
+  # ЭНДПОИНТЫ ДЛЯ АУТЕНТИФИКАЦИИ И ДОСТУПА К ПРОФИЛЮ
+  # ==========================================
+
+
+  /api/v1/auth/register:
+    post:
+      summary: Регистрация нового пользователя (Email/Password)
+      tags:
+        - Authentication
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, first_name, last_name]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: "ivan.ivanov@example.com"
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  example: "SecretPassword123!"
+                first_name:
+                  type: string
+                  example: "Иван"
+                last_name:
+                  type: string
+                  example: "Иванов"
+      responses:
+        '201':
+          description: Пользователь успешно создан.
+          headers:
+            Location:
+              description: URI созданного ресурса пользователя.
+              schema:
+                type: string
+                example: "/api/v1/users/d3b07384-d113-4c5e-a9b0-99f57b6495b6"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user_id:
+                    type: string
+                    format: uuid
+                    example: "d3b07384-d113-4c5e-a9b0-99f57b6495b6"
+                  status:
+                    type: string
+                    example: "created"
+        '400':
+          description: Неверный формат данных или Email уже занят.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+
+  /api/v1/auth/login:
+    post:
+      summary: Аутентификация по Email/Password
+      tags:
+        - Authentication
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: "ivan.ivanov@example.com"
+                password:
+                  type: string
+                  format: password
+                  example: "SecretPassword123!"
+      responses:
+        '200':
+          description: Успешный вход. Возвращает токены.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/auth/oauth/login:
+    post:
+      summary: Вход/Регистрация через стороннего провайдера (Google, Facebook, Apple)
+      description: Клиент передает токен (Id Token / Access Token), полученный от SDK провайдера.
+      tags:
+        - Authentication
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider, token]
+              properties:
+                provider:
+                  type: string
+                  enum: [google, facebook, apple]
+                  example: "google"
+                token:
+                  type: string
+                  description: ID Token (для Google/Apple) или Access Token (для Facebook)
+                  example: "eyJhbGciOiJSUzI1NiIsImtpZCI6IjFiOT...[truncated]"
+      responses:
+        '200':
+          description: Успешный вход.
+        '400':
+          description: Ошибка аутентификации через OAuth-провайдера.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                InvalidToken:
+                  summary: Токен невалиден или подделан
+                  value:
+                    error: "INVALID_OAUTH_TOKEN"
+                    message: "Предоставленный токен не прошел проверку подписи."
+                TokenExpired:
+                  summary: Срок действия токена провайдера истек
+                  value:
+                    error: "OAUTH_TOKEN_EXPIRED"
+                    message: "Срок действия токена авторизации провайдера истек."
+                MissingEmail:
+                  summary: Провайдер не передал email
+                  value:
+                    error: "OAUTH_MISSING_EMAIL"
+                    message: "Запрещен доступ к email в настройках приватности провайдера."
+                    details:
+                      provider: "facebook"
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          
+  /api/v1/auth/refresh:
+    post:
+      summary: Обновление Access Token с помощью Refresh Token
+      tags:
+        - Authentication
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+                  example: "r_8f3b2a1c-9e8d-7c6b-5a4f-3e2d1c0b9a8f"
+      responses:
+        '200':
+          description: Токены успешно обновлены.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                InvalidToken:
+                  summary: Токен невалиден или подделан
+                  value:
+                    error: "INVALID_CREDENTIALS"
+                    message: "Предоставленный токен не прошел проверку."
+                AccountBlocked:
+                  summary: Аккаунт заблокирован
+                  value:
+                    error: "ACCOUNT_DISABLED"
+                    message: "Доступ к аккаунту заблокирован."
+
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/auth/me:
+    get:
+      summary: Получение профиля текущего пользователя
+      description: Возвращает данные пользователя на основе переданного Bearer токена.
+      tags:
+        - Authentication
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Данные успешно получены
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                    example: "123e4567-e89b-12d3-a456-426614174000"
+                  email:
+                    type: string
+                    format: email
+                    example: user@example.com
+                  role:
+                    type: string
+                    enum: [client, courier, restaurant]
+                    example: client
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  # ==========================================
+  # ЭНДПОИНТЫ ДЛЯ ОРГАНИЗАТОРОВ
+  # ==========================================
+  
+  /api/v1/organizer/venues:
+    parameters:
+      - $ref: '#/components/parameters/CorrelationIdParam'        
+    get:
+      summary: "Получение списка концертных площадок"
+      description: Возвращает список площадок с фильтрацией по городу и названию, поддерживая постраничную пагинацию.
+      tags:
+        - Organizer
+      parameters:
+        - name: city
+          in: query
+          required: false
+          description: Фильтрация площадок по городу.
+          schema:
+            type: string
+          example: "Москва"
+        - name: name
+          in: query
+          required: false
+          description: Поиск по частичному совпадению в названии площадки.
+          schema:
+            type: string
+          example: "Лужники"
+        - name: page
+          in: query
+          required: false
+          description: Номер запрашиваемой страницы.
+          schema:
+            type: integer
+            default: 1
+          example: 1
+        - name: limit
+          in: query
+          required: false
+          description: Количество элементов на одной странице.
+          schema:
+            type: integer
+            default: 20
+          example: 20
+      responses:
+        '200':
+          description: Успешное получение списка площадок.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/VenueResponse'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMetadata'
+        '400':
+          description:  Ошибка при выполнении запроса.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                BadRequest:
+                  summary: "Ошибка при выполнении запроса."
+                  value:
+                    error: "BAD_REQUEST"
+                    message: "Ошибка при выполнении запроса."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    post:
+      summary: "Создание площадки"
+      description: Создает базовую сущность площадки, ее зоны и генерирует физическую сетку мест. Карты (JSON) загружаются отдельно.
+      tags:
+        - Organizer
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVenueRequest'
+      responses:
+        '201':
+          description: Структура площадки успешно создана.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [venue_id, status]
+                properties:
+                  venue_id:
+                    type: string
+                    format: uuid
+                    example: "7b8a9c0d-1234-5678-abcd-ef1234567890"
+                  status:
+                    type: string
+                    example: "structure_created"
+        '400':
+          description: Неверный формат данных или дублирование map_element_id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/organizer/venues/{venueId}:
+    put:
+      summary: "Редактирование данных о площадке"
+      description: "Позволяет организатору изменить метаданные площадки (кроме карт)."
+      tags:
+        - Organizer
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
+        - name: venueId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: "7b8a9c0d-1234-5678-abcd-ef1234567890"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateVenueRequest'
+      responses:
+        '200':
+          description: Карта площадки успешно сохранена.
+        '400':
+          description: Ошибка валидации схемы площадки.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                InvalidToken:
+                  summary: Ошибка валидации входных параметров
+                  value:
+                    error: "VALIDATION_FAILED"
+                    message: "Ошибка валидации."
+                    details:
+                      schema: "parse error"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  
+  /api/v1/organizer/venues/{venueId}/map:
+    put:
+      summary: "Загрузка/Обновление визуальной карты всей площадки"
+      description: Загружает JSON-схему (стены, сцена, контуры секторов) для интерактивного отображения площадки.
+      tags:
+        - Organizer
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
+        - name: venueId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: "7b8a9c0d-1234-5678-abcd-ef1234567890"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [map_visual_schema]
+              properties:
+                map_visual_schema:
+                  type: object
+                  description: Свободный валидный JSON-объект с векторной разметкой стадиона/зала.
+                  example: {
+                    "canvas": { "width": 2000, "height": 1500 },
+                    "elements": [
+                      { "type": "stage", "coords": "M 800 200 L 1200 200 ..." },
+                      { "type": "zone_outline", "zone_id": "a1b2c3d4-...", "shape": "polygon" }
+                    ]
+                  }
+      responses:
+        '200':
+          description: Карта площадки успешно сохранена.
+        '400':
+          description: Ошибка валидации схемы площадки.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                InvalidToken:
+                  summary: Ошибка валидации входных параметров
+                  value:
+                    error: "VALIDATION_FAILED"
+                    message: "Ошибка валидации."
+                    details:
+                      schema: "parse error"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/organizer/venues/{venueId}/zones/{zoneId}/map:
+    put:
+      summary: "[Организатор] Загрузка/Обновление интерактивной карты конкретной зоны"
+      description: Загружает JSON-схему расположения кресел внутри зоны. Графические элементы связываются со строками в БД по `map_element_id`.
+      tags:
+        - Organizer
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
+        - name: venueId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: zoneId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: "9e8d7c6b-5432-10fe-ba98-fedcba987654"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [zone_visual_schema]
+              properties:
+                zone_visual_schema:
+                  type: object
+                  description: Схема рассадки сектора, содержащая map_element_id для каждого кресла.
+                  example: {
+                    "canvas": { "width": 800, "height": 600 },
+                    "seats_graphics": [
+                      { "map_element_id": "seat_row1_space1", "type": "circle", "cx": 100, "cy": 150, "r": 6 },
+                      { "map_element_id": "seat_row1_space2", "type": "circle", "cx": 120, "cy": 150, "r": 6 }
+                    ]
+                  }
+      responses:
+        '200':
+          description: Карта зоны успешно сохранена.
+        '400':
+          description: Невалидный JSON или map_element_id не совпадает с инвентарем в БД.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                InvalidToken:
+                  summary: Ошибка валидации входных параметров
+                  value:
+                    error: "VALIDATION_FAILED"
+                    message: "Ошибка валидации."
+                    details:
+                      schema: "parse error" 
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+
+  /api/v1/organizer/events:
+    post:
+      summary: Создание мероприятия
+      tags:
+        - Organizer
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, performer_id, venue_id, start_time, end_time, price_settings]
+              properties:
+                performer_id:
+                  type: string
+                  format: uuid
+                  example: "a8b7c6d5-e4f3-a2b1-c0d9-e8f7a6b5c4d3"
+                venue_id:
+                  type: string
+                  format: uuid
+                  example: "550e8400-e29b-41d4-a716-446655440000"
+                title:
+                  type: string
+                  example: "Концерт Алексея Глызина"
+                description:
+                  type: string
+                  example: "В связи с высоким спросом добавлен дополнительный концерт!"
+                category: 
+                  type: string
+                  example: "Концерт"
+                start_time:
+                  type: string
+                  format: date-time
+                  example: "2026-12-05T19:00:00Z"
+                end_time:
+                  type: string
+                  format: date-time
+                  example: "2026-12-05T23:00:00Z"
+                price_min:
+                  type: number
+                  example: 2000.00
+                price_max:
+                  type: number
+                  example: 10000.00
+      responses:
+        '201':
+          description: Мероприятие успешно создано.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  event_id:
+                    type: string
+                    format: uuid
+        '400':
+          description:  Невалидные значения параметров .
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                ValidationFail:
+                  summary: Ошибка валидации входных параметров
+                  value:
+                    error: "VALIDATION_FAILED"
+                    message: "Ошибка валидации."
+                    details:
+                      performer_id: "not exists"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/organizer/events/{eventId}:
+    put:
+      summary: "Редактирование мероприятия"
+      description: Позволяет организатору изменить метаданные мероприятия, время проведения и ценовой диапазон.
+      tags:
+        - Organizer
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: "a8b7c6d5-e4f3-a2b1-c0d9-e8f7a6b5c4d3"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateEventRequest'
+      responses:
+        '200':
+          description: Мероприятие успешно обновлено.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  event_id:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    example: "updated"
+        '400':
+          description:  Невалидные значения параметров .
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                ValidationFail:
+                  summary: Ошибка валидации входных параметров
+                  value:
+                    error: "VALIDATION_FAILED"
+                    message: "Ошибка валидации."
+                    details:
+                      performer_id: "not exists"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/organizer/performers:
+    post:
+      summary: "Создание нового исполнителя"
+      description: Добавляет нового артиста, группу или команду в общую базу системы.
+      tags:
+        - Organizer
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PerformerResponse'
+      responses:
+        '201':
+          description: Исполнитель успешно добавлен.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformerResponse'
+        '400':
+          description:  Ошибка при выполнении запроса.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                BadRequest:
+                  summary: Ошибка при выполнении запроса
+                  value:
+                    error: "BAD_REQUEST"
+                    message: "Ошибка при выполнении запроса."
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/organizer/performers/{performerId}:
+    put:
+      summary: "Редактирование данных исполнителя"
+      description: Обновляет профиль, описание или жанр существующего исполнителя.
+      tags:
+        - Organizer
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
+        - name: performerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: "a8b7c6d5-e4f3-a2b1-c0d9-e8f7a6b5c4d3"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePerformerRequest'
+      responses:
+        '200':
+          description: Профиль артиста успешно обновлен.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformerResponse'
+        '400':
+          description:  Невалидные значения параметров .
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                ValidationFail:
+                  summary: Ошибка валидации входных параметров
+                  value:
+                    error: "VALIDATION_FAILED"
+                    message: "Ошибка валидации."
+                    details:
+                      performer_id: "not exists"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/organizer/venues/{venueId}/zones:
+    get:
+      summary: "Получение зон концертной площадки"
+      description: Возвращает список всех секторов/зон (например, Партер, Трибуна А) для указанной площадки.
+      tags:
+        - Organizer
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
+        - name: venueId
+          in: path
+          required: true
+          description: Уникальный UUID площадки.
+          schema:
+            type: string
+            format: uuid
+          example: "7b8a9c0d-1234-5678-abcd-ef1234567890"
+      responses:
+        '200':
+          description: Успешное получение списка зон площадки.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VenueZoneResponse'
+        '400':
+          description:  Ошибка при выполнении запроса.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                BadRequest:
+                  summary: Ошибка при выполнении запроса
+                  value:
+                    error: "BAD_REQUEST"
+                    message: "Ошибка при выполнении запроса."
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/performers:
+    get:
+      summary: "Поиск исполнителя по названию"
+      description: Доступен для быстрого автокомплита при создании мероприятий или поиске клиентами.
+      tags:
+        - All users
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
+        - name: q
+          in: query
+          required: true
+          description: Поисковый запрос (частичное или полное имя исполнителя).
+          schema:
+            type: string
+          example: "Linkin Park"
+      responses:
+        '200':
+          description: Список найденных исполнителей.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PerformerResponse'
+        '400':
+          description:  Невалидные значения параметров .
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                BadRequest:
+                  summary: "Ошибка при выполнении запроса."
+                  value:
+                    error: "BAD_REQUEST"
+                    message: "Ошибка при выполнении запроса."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/events:
+    get:
+      summary: "Поиск и фильтрация мероприятий"
+      description: |
+        Возвращает список активных мероприятий по произвольному набору фильтров. 
+        Поддерживает пагинацию через `page` и `limit`.
+      tags:
+        - All users
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
+        - name: q
+          in: query
+          required: false
+          description: Полнотекстовый поиск по названию или описанию.
+          schema:
+            type: string
+          example: "Рок фестиваль"
+        - name: category
+          in: query
+          required: false
+          description: Фильтрация по категории мероприятия.
+          schema:
+            type: string
+          example: "concerts"
+        - name: performer_id
+          in: query
+          required: false
+          description: Фильтр по конкретному исполнителю.
+          schema:
+            type: string
+            format: uuid
+          example: "a8b7c6d5-e4f3-a2b1-c0d9-e8f7a6b5c4d3"
+        - name: venue_id
+          in: query
+          required: false
+          description: Фильтр по конкретной площадке.
+          schema:
+            type: string
+            format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        - name: city
+          in: query
+          required: false
+          description: Фильтр по городу проведения (извлекается через связи площадки).
+          schema:
+            type: string
+          example: "Москва"
+        - name: date_from
+          in: query
+          required: false
+          description: Начало интервала проведения (ISO 8601).
+          schema:
+            type: string
+            format: date-time
+          example: "2026-12-01T00:00:00Z"
+        - name: date_to
+          in: query
+          required: false
+          description: Конец интервала проведения (ISO 8601).
+          schema:
+            type: string
+            format: date-time
+          example: "2026-12-31T23:59:59Z"
+        - name: price_max
+          in: query
+          required: false
+          description: Максимально допустимая минимальная цена (для поиска доступных билетов "от").
+          schema:
+            type: number
+          example: 5000.00
+        - name: page
+          in: query
+          required: true
+          description: Номер страницы для пагинации.
+          schema:
+            type: integer
+            default: 1
+          example: 1
+        - name: limit
+          in: query
+          required: true
+          description: Количество элементов на страницу.
+          schema:
+            type: integer
+            default: 20
+          example: 20
+      responses:
+        '200':
+          description: Успешный поиск. Возвращает список событий и метаданные пагинации.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EventResponse'
+                  pagination:
+                    type: object
+                    required: [total_items, total_pages, current_page, per_page]
+                    properties:
+                      total_items:
+                        type: integer
+                        example: 142
+                      total_pages:
+                        type: integer
+                        example: 8
+                      current_page:
+                        type: integer
+                        example: 1
+                      per_page:
+                        type: integer
+                        example: 20
+        '400':
+          description:  Неверный формат параметров фильтрации.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                BadRequest:
+                  summary: "Неверный формат параметров фильтрации."
+                  value:
+                    error: "BAD_REQUEST"
+                    message: "Ошибка при выполнении запроса."
+                    details: 
+                      venue_id: "Площадка отсутствует."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/events/{eventId}:
+    get:
+      summary: "Получение детальной информации о событии по ID"
+      description: Возвращает полные данные конкретного мероприятия. Метод публичный.
+      tags:
+        - All users
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
+        - name: eventId
+          in: path
+          required: true
+          description: Уникальный UUID события.
+          schema:
+            type: string
+            format: uuid
+          example: "d3b07384-d113-4c5e-a9b0-99f57b6495b6"
+      responses:
+        '200':
+          description: Данные события успешно получены.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventResponse'
+        '404':
+          description: Событие не найдено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                EventNotFound:
+                  value:
+                    error: "NOT_FOUND"
+                    message: "Запрошенное мероприятие не найдено или перемещено в архив."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/venues/{venueId}/zones/{venueZoneId}/seats/v{version}:
+    get:
+      summary: "Получение списка мест в зоне площадки"
+      description: "Возвращает статический список физических мест внутри конкретного сектора. Для получения динамических статусов занятости мест конкретного мероприятия используйте Event API."
+      tags:
+        - All users
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
+        - name: venueId
+          in: path
+          required: true
+          description: Уникальный UUID площадки.
+          schema:
+            type: string
+            format: uuid
+        - name: venueZoneId
+          in: path
+          required: true
+          description: Уникальный UUID зоны.
+          schema:
+            type: string
+            format: uuid
+          example: "9e8d7c6b-5432-10fe-ba98-fedcba987654"
+        - name: version
+          in: path
+          required: true
+          description: Номер версии схемы.
+          schema:
+            type: integer
+          example: 5
+      responses:
+        '200':
+          description: Успешное получение списка мест в зоне.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VenueSeatResponse'
+        '400':
+          description:  Ошибка при выполнении запроса.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                BadRequest:
+                  summary: Ошибка при выполнении запроса
+                  value:
+                    error: "BAD_REQUEST"
+                    message: "Ошибка при выполнении запроса."
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+
+  /api/v1/events/{eventId}/zones/{venueZoneId}/seats/stream:
+    get:
+      summary: "Стрим динамических статусов мест (SSE)"
+      description: |
+        Открывает постоянное HTTP-соединение для отправки обновлений статусов мест в реальном времени.
+        Клиент получает начальный снимок (snapshot) всех мест, а затем только дельты (изменения статусов).
+        
+        **Формат стрима (text/event-stream):**
+        ```ev
+        event: seat_update
+        data: [{"map_element_id": "seat_row3_space14", "status": "reserved", "expires_at": "2026-10-13T23:25:00Z"}]
+        ```
+      tags:
+        - All users
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'        
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: venueZoneId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Last-Event-ID
+          in: header
+          required: false
+          description: Идентификатор последнего полученного события (используется для восстановления пропущенных данных при переподключении).
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Успешное установление SSE-соединения.
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/SeatStatusUpdateEvent'
+        '400':
+          description: Неверный UUID или параметры.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                EventNotFound:
+                  value:
+                    error: "BAD_REQUEST"
+                    message: "Неверный UUID или параметры."
+
+        '404':
+          description:  Мероприятие или зона не найдены.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                EventNotFound:
+                  value:
+                    error: "NOT_FOUND"
+                    message: " Мероприятие или зона не найдены."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/events/{eventId}/zones/{venueZoneId}/seats/status:
+    get:
+      summary: "Получение статусов мест методом Pooling (резерв)"
+      description: |
+        Используется в качестве graceful degradation, если SSE-соединение недоступно.
+        Фронтенд должен опрашивать этот эндпоинт с интервалом в 5–30 секунд.
+        Для оптимизации трафика рекомендуется передавать таймстемп `since`, чтобы сервер возвращал только изменения с момента последнего запроса.
+      tags:
+        - All users
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: venueZoneId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: since
+          in: query
+          required: false
+          description: Таймстемп последнего успешного запроса (ISO 8601). Если передан, вернутся только изменения после этого времени.
+          schema:
+            type: string
+            format: date-time
+          example: "2026-10-13T23:15:00Z"
+      responses:
+        '200':
+          description: Успешный возврат текущих статусов (или дельты изменений).
+          headers:
+            X-Server-Timestamp:
+              description: Текущее время сервера. Фронтенд должен использовать его в следующем запросе в параметре `since`.
+              schema:
+                type: string
+                format: date-time
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [last_timestamp, seats]
+                properties:
+                  last_timestamp:
+                    type: string
+                    format: date-time
+                    example: "2026-10-13T23:15:05Z"
+                  seats:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SeatStatusItem'
+        '400':
+          description:  Ошибка при выполнении запроса.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                BadRequest:
+                  summary: Ошибка при выполнении запроса
+                  value:
+                    error: "BAD_REQUEST"
+                    message: "Ошибка при выполнении запроса."
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/bookings/lock:
+    post:
+      summary: Резервирование мест на конкретное мероприятие
+      tags:
+      - All users
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+               oneOf:
+                - $ref: '#/components/schemas/CreateLockBySeatsRequest'
+                - $ref: '#/components/schemas/CreateLockByZoneRequest'
+      responses:
+        '201':
+          description: Места успешно зарезервированы.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateLockBySeatsResponse'
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Места уже кем-то зарезервированны.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                InvalidToken:
+                  summary: Места уже зарезервированы
+                  value:
+                    error: "VALIDATION_FAILED"
+                    message: "Все или часть мест уже были зарезервированны."
+                    details:
+                        seats:['seat_1', 'seat_2']
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/bookings/lock/{lockId}:
+    delete:
+      summary: Отмена резервирования мест
+      tags:
+        - All users
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+        - name: lockId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Резерв снят
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                      type: boolean
+                      example: true        
+
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: Резервирование не найдено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                EventNotFound:
+                  value:
+                    error: "NOT_FOUND"
+                    message: "Запрошенный резерв не найден."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/bookings:
+    post:
+      summary: Оформление нового заказа
+      tags:
+        - All users
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookingRequest'
+      responses:
+        '201':
+          description: Заказ успешно создан и ожидает оплаты.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bookingId:
+                    type: string
+                    format: uuid
+                    example: "9ba85f64-1111-4a22-b5de-2c963f66c223"
+                  status:
+                    type: string
+                    enum: [PENDING_PAYMENT, PROCESSING, PAID]
+                    example: "PENDING_PAYMENT"
+                  paymentUrl:
+                    type: string
+                    format: uri
+                    description: URL платежного шлюза для перенаправления пользователя (если применимо).
+                    example: "https://stripe.com"
+                  expiresAt:
+                    type: string
+                    format: date-time
+                    description: Таймстамп, до которого заказ должен быть оплачен, иначе он аннулируется.
+                    example: "2026-10-24T21:45:00Z"
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: Резервирование не найдено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                EventNotFound:
+                  value:
+                    error: "NOT_FOUND"
+                    message: "Запрошенный резерв не найден."
+        '409':
+          description: Время резерва истекло.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                InvalidToken:
+                  summary: Время резерва истекло
+                  value:
+                    error: "VALIDATION_FAILED"
+                    message: "Резев аннулирован."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/bookings/{bookingId}:
+    get:
+      summary: Получение информации о бронировании
+      tags:
+        - All users
+      description: Возвращает актуальное состояние заказа, информацию о местах и статус билета.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Информация о заказе успешно получена.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status, seats, amount, showDetails, paymentStatus]
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                    example: "9ba85f64-1111-4a22-b5de-2c963f66c223"
+                  status:
+                    type: string
+                    enum: [PENDING, CONFIRMED, CANCELLED, FAILED]
+                    example: "CONFIRMED"
+                  seats:
+                    type: array
+                    items:
+                      type: string
+                    example: ["Row 5, Seat 12", "Row 5, Seat 13"]
+                  amount:
+                    type: string
+                    format: float
+                    example: "150.00"
+                  showDetails:
+                    type: object
+                    required: [eventId, title, startAt]
+                    properties:
+                      eventId:
+                        type: string
+                        format: uuid
+                        example: "7ca21f11-1234-4a22-b5de-8c963f66b112"
+                      title:
+                        type: string
+                        example: "Шоу уральские пельмени"
+                      startAt:
+                        type: string
+                        format: date-time
+                        example: "2026-11-15T19:00:00Z"
+                  paymentStatus:
+                    type: string
+                    enum: [PENDING, SUCCESS, FAILED, REFUNDED]
+                    example: "SUCCESS"
+                  ticket:
+                    type: object
+                    properties:
+                      ticketId:
+                        type: string
+                        format: uuid
+                      qrCodeData:
+                        type: string
+                        description: Ed25519 подпись или токен для QR-кода
+                        example: "ed25519-signature-string..."
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/Forbidden'
+          description: Бронирование не найдено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                EventNotFound:
+                  value:
+                    error: "NOT_FOUND"
+                    message: "Бронирование не найдено."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+    delete:
+      summary: Отмена бронирования (Refund)
+      tags:
+        - All users
+      description: Отменяет заказ, снимает резерв мест и инициирует возврат средств.
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Заказ успешно отменен, запущен процесс возврата денег.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [refundId, refundAmount, status]
+                properties:
+                  refundId:
+                    type: string
+                    format: uuid
+                    example: "rf_123456789"
+                  refundAmount:
+                    type: number
+                    format: float
+                    example: 150.00
+                  status:
+                    type: string
+                    enum: [CANCELLED]
+                    example: "CANCELLED"
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/Forbidden'
+          description: Бронирование не найдено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                EventNotFound:
+                  value:
+                    error: "NOT_FOUND"
+                    message: "Бронирование не найдено."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/bookings/{bookingId}/confirm:
+    post:
+      summary: Подтверждение оплаты
+      tags:
+        - All users
+      description: Эндпоинт для подтверждения оплаты. Вызывается обработчиком вебхуков платежной системы.
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [paymentId, status]
+              properties:
+                paymentId:
+                  type: string
+                  example: "ch_3Mv9X2LkdIwX7ixS"
+                status:
+                  type: string
+                  enum: [SUCCESS, FAILED]
+                  example: "SUCCESS"
+      responses:
+        '200':
+          description: Заказ успешно переведен в статус CONFIRMED, сгенерирована ссылка на билет.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [bookingStatus, ticketUrl]
+                properties:
+                  bookingStatus:
+                    type: string
+                    enum: [CONFIRMED]
+                    example: "CONFIRMED"
+                  ticketUrl:
+                    type: string
+                    format: uri
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/Forbidden'
+          description: Бронирование не найдено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                EventNotFound:
+                  value:
+                    error: "NOT_FOUND"
+                    message: "Бронирование не найдено."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    
+  /api/v1/payments:
+    post:
+      summary: Создает платежную сессию в системе и регистрирует транзакцию на стороне платежного шлюза
+      tags:
+        - All users
+      description: Создает платежную сессию в системе и регистрирует транзакцию на стороне платежного шлюза. Возвращает ссылку на форму оплаты (gatewayUrl), куда необходимо перенаправить пользователя.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [bookingId, amount, method, currency]
+              properties:
+                bookingId:
+                  type: string
+                  format: uuid
+                  description: Идентификатор созданного ранее бронирования.
+                  example: "9ba85f64-1111-4a22-b5de-2c963f66c223"
+                amount:
+                  type: string
+                  format: float
+                  description: Сумма к оплате. Должна строго совпадать с полной стоимостью заказа (amount в booking).
+                  example: 150.00
+                currency:
+                  type: string
+                  description: Трехзначный код валюты (ISO 4217).
+                  example: "RUB"
+                method:
+                  type: string
+                  enum: [CARD, NET_BANKING, WALLET, UPI]
+                  description: Предпочтительный платежный инструмент.
+                  example: "CARD"
+      responses:
+        '201':
+          description: Платежная сессия успешно инициализирована.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [paymentId, gatewayUrl, status]
+                properties:
+                  paymentId:
+                    type: string
+                    format: uuid
+                    description: Внутренний ID платежа в нашей системе.
+                    example: "9ba85f64-1111-4a22-b5de-2c963f66c223"
+                  gatewayUrl:
+                    type: string
+                    format: uri
+                    description: URL-адрес платежной страницы шлюза для редиректа пользователя.
+                    example: "https://razorpay.com"
+                  status:
+                    type: string
+                    enum: [INITIATED]
+                    example: "INITIATED"
+        '400':
+          description: Неверные входные данные или сумма не совпадает со стоимостью заказа.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/Forbidden'
+          description: Бронирование не найдено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                EventNotFound:
+                  value:
+                    error: "NOT_FOUND"
+                    message: "Бронирование не найдено."
+        '409':
+          description: Конфликт. Для данного bookingId уже существует активный или успешно завершенный платеж.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                InvalidToken:
+                  summary: Для данного bookingId уже существует активный или успешно завершенный платеж.
+                  value:
+                    error: "VALIDATION_FAILED"
+                    message: "Резев аннулирован."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/payments/webhook:
+    post:
+      summary: Принимает уведомления от платежного шлюза о смене статуса транзакции (успех/провал).
+      tags:
+        - All users
+      description:  Принимает уведомления от платежного шлюза о смене статуса транзакции (успех/провал). Должен обрабатывать запросы максимально быстро (возвращать 200 ACK) и валидировать криптографическую подпись шлюза в заголовках.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [paymentId, status]
+              properties:
+                paymentId:
+                  type: string
+                  format: uuid
+                  description: Внутренний или внешний (ID шлюза) идентификатор транзакции.
+                  example: "9ba85f64-1111-4a22-b5de-2c963f66c223"
+                status:
+                  type: string
+                  enum: [SUCCESS, FAILED, CHARGEBACK]
+                  description: Статус проведения операции на стороне шлюза.
+                  example: "SUCCESS"
+                gatewayTransactionId:
+                  type: string
+                  description: Уникальный ID транзакции в самом банке/шлюзе (для фин. аудита).
+                  example: "razorpay_trx_99210"
+      responses:
+        '200':
+          description: Вебхук успешно принят и передан в обработку.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received]
+                properties:
+                  received:
+                    type: boolean
+                    example: true
+
+  /api/v1/payments/{paymentId}/refund:
+    post:
+      summary: Инициирует возврат
+      tags:
+        - All users
+      description: Инициирует полный или частичный возврат средств по ранее успешно проведенному платежу.
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: "9ba85f64-1111-4a22-b5de-2c963f66c223"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, reason]
+              properties:
+                amount:
+                  type: string
+                  format: float
+                  description: Сумма возврата (может быть меньше исходной при частичном возврате или сервисных сборах).
+                  example: "150.00"
+                reason:
+                  type: string
+                  description: Причина отмены платежа (для логов и аналитики).
+                  example: "USER_CANCELLED_RESERVATION"
+      responses:
+        '200':
+          description: Запрос на возврат средств успешно отправлен в банк-эквайер.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [refundId, status, estimatedDate]
+                properties:
+                  refundId:
+                    type: string
+                    format: uuid
+                    example: "rf_82319df0-3122-491a"
+                  status:
+                    type: string
+                    enum: [PENDING, PROCESSED]
+                    example: "PENDING"
+                  estimatedDate:
+                    type: string
+                    format: date
+                    description: Предполагаемая дата зачисления средств на карту пользователя (обычно от 3 до 5 рабочих дней).
+                    example: "2026-10-29"
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/Forbidden'
+          description: Указанный paymentId не найден в системе.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                EventNotFound:
+                  value:
+                    error: "NOT_FOUND"
+                    message: "Бронирование не найдено."
+        '422':
+          description: Невозможно выполнить возврат (например, сумма возврата превышает сумму исходной транзакции).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/controllers/tickets/validate:
+    post:
+      summary: Ручная валидация билета контроллером
+      tags:
+        - Controller
+      description: Используется мобильным приложением стюарда/контроллера для ручной проверки QR-кода на входе.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationIdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qrData, controllerId]
+              properties:
+                qrData:
+                  type: string
+                  description: Считанная Ed25519 подпись из QR-кода
+                controllerId:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Билет распознан и он валидный для прохода
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  is_valid:
+                    type: boolean
+                    description: Билет валиден
+                    example: true
+                  status: 
+                    type: string
+                    enum: [ALLOWED, NOT_ALLOWED]
+                    description: Допустим ли проход по билету
+                    example: "ALLOWED"
+                  ticket_info:
+                    type: object
+                    properties:
+                      event_name:
+                        type: string
+                      seat_id: 
+                        type: string
+                        format: uuid
+                      seat_info:
+                        type: string
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Билет не найден в системе.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                TicketNotFound:
+                  value:
+                    error: "NOT_FOUND"
+                    message: "Билет не найден."
+        '422':
+          description: Билет уже был использован.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                TicketNotFound:
+                  value:
+                    error: "VALIDATION_FAILED"
+                    message: "Билет уже был использован."
+                    details:
+                      invalidated_at: "2026-11-15T19:00:00Z"
+                      device_id: "7ca21f11-1234-4a22-b5de-8c963f66b112"
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+                        
+  /api/v1/tickets/gate-pass:
+    post:
+      summary: Регистрация прохода через турникет СКУД
+      tags:
+        - Device
+      description: Метод для автоматических гейтов/турникетов. Возвращает команду на открытие физического реле.
+      parameters:
+        - $ref: '#/components/parameters/ApiKeyParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qrData]
+              properties:
+                qrData:
+                  type: string
+                gateId:
+                  type: string
+                  description: Идентификатор конкретного турникета/валидатора
+                zoneId:
+                  type: string
+                  description: Трибуна/сектор стадиона (для валидации зоны доступа)
+      responses:
+        '200':
+          description: Билет считан.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatePassResponse'
+        '401':
+          description: ApiKey not valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'                
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      
+  /api/v1/tickets/{gateId}/gate-pass:
+    post:
+      summary: Регистрация прохода через турникет СКУД c привязкой турникета
+      tags:
+        - Device
+      description: Метод для автоматических гейтов/турникетов. Возвращает команду на открытие физического реле.
+      parameters:
+        - $ref: '#/components/parameters/ApiKeyParam'
+        - name: gateId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qrData, gateId]
+              properties:
+                qrData:
+                  type: string
+                gateId:
+                  type: string
+                  description: Идентификатор конкретного турникета/валидатора
+                zoneId:
+                  type: string
+                  description: Трибуна/сектор стадиона (для валидации зоны доступа)
+      responses:
+        '200':
+          description: Билет считан.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatePassResponse'
+        '401':
+          description: ApiKey not valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'                
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  
+  parameters:
+    CorrelationIdParam:
+      name: Correlation-ID
+      in: header
+      description: Уникальный идентификатор запроса (UUID) для сквозного логирования
+      required: true
+      schema:
+        type: string
+        format: uuid
+    IdempotencyKeyParam:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Ключ идемпотентности для дедупликации.
+      schema:
+        type: string
+        format: uuid
+        example: "8e03978e-40d5-43e8-bc93-6894a57f9324"     
+    ApiKeyParam:
+      name: Api-Key
+      in: header
+      description: Ключ площадки
+      required: true
+      shema:
+        type: string
+  responses:
+    TooManyRequests:
+      description: Превышен лимит запросов (Rate Limit). Повторите попытку позже.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Время в секундах, через которое можно повторить запрос.
+          example: 60
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "RATE_LIMIT_EXCEEDED"
+            message: "Слишком много попыток входа. Пожалуйста, повторите попытку через 60 секунд."
+  
+    Unauthorized:
+      description: Токен отсутствует, просрочен или невалиден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "INVALID_CREDENTIALS"
+            message: "Отсутствующий, недействительный или истекший токен доступа."
+
+    Forbidden:
+      description: У пользователя отсутствует роль необходимая для доступа
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "FORBIDDEN_ROLE"
+            message: "Доступ запрещен. Отсутствует требуемая роль."
+
+  schemas:
+    TokenResponse:
+      type: object
+      required:
+        - accessToken
+        - refreshToken
+        - expiresIn
+      properties:
+        accessToken:
+          type: string
+          description: Короткоживущий токен для авторизации запросов (15 минут)
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.access_payload..."
+        refreshToken:
+          type: string
+          description: Долгоживущий токен для получения новых пар токенов (30 дней)
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.refresh_payload..."
+        expiresIn:
+          type: integer
+          description: Время жизни access-токена в секундах
+          example: 900
+    ErrorResponse:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: Строгий машиночитаемый код ошибки для фронтенда.
+          enum:
+            # Общие ошибки и валидация
+            - BAD_REQUEST
+            - VALIDATION_FAILED
+            - NOT_FOUND
+            # Ошибки регистрации
+            - EMAIL_ALREADY_EXISTS
+            - PHONE_ALREADY_EXISTS
+            # Ошибки аутентификации (401)
+            - INVALID_CREDENTIALS
+            - ACCOUNT_DISABLED
+             # Ошибки ролей (403)
+            - FORBIDDEN_ROLE
+            # Ошибки OAuth провайдеров
+            - INVALID_OAUTH_TOKEN
+            - OAUTH_TOKEN_EXPIRED
+            - OAUTH_MISSING_EMAIL
+            - OAUTH_PROVIDER_NOT_SUPPORTED
+            # Лимиты (429)            
+            - RATE_LIMIT_EXCEEDED
+          example: "VALIDATION_FAILED"
+        message:
+          type: string
+          description: Человекочитаемый текст ошибки (для логирования или дебага).
+          example: "Переданные данные не прошли проверку."
+        details:
+          type: object
+          description: "Свободный JSON-объект с деталями (например, пара 'поле: ошибка')."
+          example: { "email": "Неверный формат email адреса." }
+          
+    CreateVenueRequest:
+      type: object
+      required: [name, city, address, total_capacity, zones]
+      properties:
+        name:
+          type: string
+          example: "МСА Лужники"
+        city:
+          type: string
+          example: "Москва"
+        address:
+          type: string
+          example: "ул. Лужники, д. 24, стр. 2"
+        total_capacity:
+          type: integer
+          description: Общая максимальная вместимость площадки (для контроля овербукинга).
+          example: 11500
+        zones:
+          type: array
+          description: Список создаваемых зон внутри площадки.
+          items:
+            type: object
+            required: [name, is_seating, seats]
+            properties:
+              name:
+                type: string
+                description: Название сектора.
+                example: "Сектор VIP Б"
+              is_seating:
+                type: boolean
+                description: Требуется ли фиксированная рассадка. Если false — массив seats может быть пустым (фан-зона).
+                example: true
+              seats:
+                type: array
+                description: Массив физических мест в этой зоне.
+                items:
+                  type: object
+                  required: [row_number, seat_number, map_element_id]
+                  properties:
+                    row_number:
+                      type: string
+                      example: "1"
+                    seat_number:
+                      type: string
+                      example: "12"
+                    map_element_id:
+                      type: string
+                      description: Уникальный строковый ключ для связи с будущей интерактивной JSON-картой.
+                      example: "seat_row1_space12"
+                    seat_type:
+                      type: string
+                      enum: [standard, vip, sofa, wheelchair]
+                      example: "vip"
+
+    UpdateVenueRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          example: "МСА Лужники"
+        city:
+          type: string
+          example: "Москва"
+        address:
+          type: string
+          example: "ул. Лужники, д. 24, стр. 2"
+        total_capacity:
+          type: integer
+          description: Общая максимальная вместимость площадки (для контроля овербукинга).
+          example: 11500
+        zones:
+          type: array
+          description: Список создаваемых зон внутри площадки.
+          items:
+            type: object
+            required: [venue_zone_id]
+            properties:
+              venue_zone_id:
+                type: string
+                format: uuid
+                example: "a8b7c6d5-e4f3-a2b1-c0d9-e8f7a6b5c4d3"
+              name:
+                type: string
+                description: Название сектора.
+                example: "Сектор VIP Б"
+              is_seating:
+                type: boolean
+                description: Требуется ли фиксированная рассадка. Если false — массив seats может быть пустым (фан-зона).
+                example: true
+              seats:
+                type: array
+                description: Массив физических мест в этой зоне.
+                items:
+                  type: object
+                  required: [venue_seat_id]
+                  properties:
+                    venue_seat_id:
+                      type: string
+                      format: uuid
+                      example: "a8b7c6d5-e4f3-a2b1-c0d9-e8f7a6b5c4d3"
+                    row_number:
+                      type: string
+                      example: "1"
+                    seat_number:
+                      type: string
+                      example: "12"
+                    map_element_id:
+                      type: string
+                      description: Уникальный строковый ключ для связи с будущей интерактивной JSON-картой.
+                      example: "seat_row1_space12"
+                    seat_type:
+                      type: string
+                      enum: [standard, vip, sofa, wheelchair]
+                      example: "vip"
+    UpdateEventRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          example: "Мировой тур рок-группы - Дополнительное Шоу"
+        performer_id:
+          type: string
+          format: uuid
+          example: "a8b7c6d5-e4f3-a2b1-c0d9-e8f7a6b5c4d3"
+        description:
+          type: string
+          example: "В связи с высоким спросом добавлен дополнительный концерт!"
+        category: 
+          type: string
+          example: "Концерт"
+        start_time:
+          type: string
+          format: date-time
+          example: "2026-12-06T19:00:00Z"
+        end_time:
+          type: string
+          format: date-time
+          example: "2026-12-06T22:00:00Z"
+        price_min:
+          type: number
+          example: 2000.00
+        price_max:
+          type: number
+          example: 10000.00
+        status:
+          type: string
+          enum: [DRAFT, ACTIVE, CANCELLED, PAST]
+          example: "active"          
+          
+    PerformerResponse:
+      type: object
+      required: [id, name, genre]
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "a8b7c6d5-e4f3-a2b1-c0d9-e8f7a6b5c4d3"
+        name:
+          type: string
+          example: "Linkin Park"
+        genre:
+          type: string
+          example: "rock"
+        description:
+          type: string
+          nullable: true
+          example: "Американская рок-группа, основанная в 1996 году."          
+          
+    CreatePerformerRequest:
+      type: object
+      required: [name, genre]
+      properties:
+        name:
+          type: string
+          example: "Linkin Park"
+        genre:
+          type: string
+          example: "rock"
+        description:
+          type: string
+          example: "Американская рок-группа, основанная в 1996 году."          
+          
+    EventResponse:
+      type: object
+      required: [id, title, description, performer_id, venue_id, category, begin_time, end_time, price_min, price_max, status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "d3b07384-d113-4c5e-a9b0-99f57b6495b6"
+        title:
+          type: string
+          example: "Большой стадионный концерт рок-группы"
+        description:
+          type: string
+          example: "Долгожданное шоу в рамках мирового турне с поддержкой визуальных спецэффектов."
+        performer_id:
+          type: string
+          format: uuid
+          example: "a8b7c6d5-e4f3-a2b1-c0d9-e8f7a6b5c4d3"
+        venue_id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        category:
+          type: string
+          example: "concerts"
+        begin_time:
+          type: string
+          format: date-time
+          example: "2026-12-05T19:00:00Z"
+        end_time:
+          type: string
+          format: date-time
+          example: "2026-12-05T22:00:00Z"
+        price_min:
+          type: number
+          example: 2500.00
+        price_max:
+          type: number
+          example: 15000.00
+        status:
+          type: string
+          enum: [DRAFT, ACTIVE, CANCELLED, PAST]
+          example: "ACTIVE"
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-10-13T12:00:00Z"          
+          
+    # Метаданные пагинации
+    PaginationMetadata:
+      type: object
+      required: [total_items, total_pages, current_page, per_page]
+      properties:
+        total_items:
+          type: integer
+          example: 45
+        total_pages:
+          type: integer
+          example: 3
+        current_page:
+          type: integer
+          example: 1
+        per_page:
+          type: integer
+          example: 20
+
+    # Схема ответа площадки (Venue)
+    VenueResponse:
+      type: object
+      required: [id, name, city, address, total_capacity, map_visual_schema, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "7b8a9c0d-1234-5678-abcd-ef1234567890"
+        name:
+          type: string
+          example: "МСА Лужники"
+        city:
+          type: string
+          example: "Москва"
+        address:
+          type: string
+          example: "ул. Лужники, д. 24, стр. 2"
+        total_capacity:
+          type: integer
+          example: 11500
+        map_visual_schema:
+          type: object
+          nullable: true
+          description: Общая интерактивная JSON-карта стадиона/зала.
+          example: { "canvas": { "width": 2000, "height": 1500 }, "elements": [] }
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-10-13T12:00:00Z"
+
+    # Схема ответа зоны (Venue Zone)
+    VenueZoneResponse:
+      type: object
+      required: [id, venue_id, name, is_seating, zone_visual_schema, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "9e8d7c6b-5432-10fe-ba98-fedcba987654"
+        venue_id:
+          type: string
+          format: uuid
+          example: "7b8a9c0d-1234-5678-abcd-ef1234567890"
+        name:
+          type: string
+          example: "Сектор VIP Б"
+        is_seating:
+          type: boolean
+          description: Флаг наличия сидячих мест. Если false — это танцпол/фан-зона.
+          example: true
+        zone_visual_schema:
+          type: object
+          nullable: true
+          description: JSON-схема расположения мест внутри этого конкретного сектора.
+          example: { "canvas": { "width": 800, "height": 600 }, "seats_graphics": [] }
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-10-13T12:05:00Z"
+
+    # Схема ответа места (Venue Seat)
+    VenueSeatResponse:
+      type: object
+      required: [id, venue_id, venue_zone_id, row_number, seat_number, map_element_id, seat_type, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d"
+        venue_id:
+          type: string
+          format: uuid
+          example: "7b8a9c0d-1234-5678-abcd-ef1234567890"
+        venue_zone_id:
+          type: string
+          format: uuid
+          example: "9e8d7c6b-5432-10fe-ba98-fedcba987654"
+        row_number:
+          type: string
+          description: Номер или буква ряда.
+          example: "3"
+        seat_number:
+          type: string
+          description: Номер посадочного места.
+          example: "14"
+        map_element_id:
+          type: string
+          description: Уникальный строковый идентификатор элемента на интерактивной JSON-карте зоны.
+          example: "seat_row3_space14"
+        seat_type:
+          type: string
+          enum: [standard, vip, sofa, wheelchair]
+          example: "vip"
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-10-13T12:10:00Z"
+          
+    SeatStatusItem:
+      type: object
+      required: [map_element_id, status]
+      properties:
+        map_element_id:
+          type: string
+          description: Идентификатор места на JSON-карте сектора.
+          example: "seat_row3_space14"
+        status:
+          type: string
+          enum: [available, reserved, sold, blocked]
+          example: "reserved"
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Время окончания брони (присутствует только для статуса reserved).
+          example: "2026-10-13T23:25:00Z"
+
+    SeatStatusUpdateEvent:
+      type: object
+      required: [event, data]
+      properties:
+        event:
+          type: string
+          example: "seat_update"
+        data:
+          $ref: '#/components/schemas/SeatStatusItem'          
+          
+    CreateLockBySeatsRequest:
+      type: object
+      required: [eventId, seats]
+      properties:
+        eventId:
+          type: string
+          format: uuid
+          description: Идентификатор мероприятия.
+        seats:
+          type: array
+          description: Список резервируемых мест.
+          items:
+            type: string
+            format: uuid
+            description: Идентификатор места.
+    CreateLockByZoneRequest:
+      type: object
+      required: [eventId, zoneId, qnty ]
+      properties:
+        eventId:
+          type: string
+          format: uuid
+          description: Идентификатор мероприятия.
+        zoneId:
+          type: string
+          format: uuid
+          description: Идентификатор зоны (должна быть зона свободного размещения).
+        qnty:
+          type: integer
+          minimum: 1
+    CreateLockBySeatsResponse:
+      type: object
+      required: [lock_id]
+      properties:
+        lock_id:
+          type: string
+          format: uuid
+          example: "9e8d7c6b-5432-10fe-ba98-fedcba987654"
+        expires_at:
+          type: string
+          format: date-time
+          example: "2026-10-13T12:05:00Z"
+        total_amoun:
+          type: string
+          example: "5000"
+        seats:
+          type: array
+          description: Флаг наличия сидячих мест. Если false — это танцпол/фан-зона.
+          items:
+            type: object 
+            properties:
+              seat_id: 
+                type: string
+                format: uuid
+                description: Идентификатор места.
+                example: "9e8d7c6b-5432-10fe-ba98-fedcba987654"
+              price:
+                type: string
+                description: Стоимость места.
+                example: "5000"
+
+    CreateBookingRequest:
+      type: object
+      required:
+        - lockId
+        - paymentMethod
+        - priceDetails
+        - customerInfo
+      properties:
+        lockId:
+          type: string
+          format: uuid
+          description: Id резерва .
+          example: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        paymentMethod:
+          type: string
+          enum: [CARD, SBER_PAY, SPB_PAY, ALTERNATIVE]
+          description: Выбранный способ оплаты.
+          example: "CARD"
+        promocode:
+          type: string
+          description: Промокод для расчета скидки (если применим).
+          example: "BIG20"
+        priceDetails:
+          type: object
+          required:
+            - expectedTotal
+            - currency
+          description: Проверка стоимости на стороне клиента (защита от изменения цен «на лету»).
+          properties:
+            expectedTotal:
+              type: string
+              description: Итоговая сумма, которую пользователь видит на экране перед нажатием кнопки оплаты.
+              example: "150.00"
+            currency:
+              type: string
+              description: Трехзначный код валюты (ISO 4217).
+              example: "RUB"
+        customerInfo:
+          type: object
+          required:
+            - email
+            - phone
+            - firstName
+            - middleName
+            - lastName
+          description: Персональные данные покупателя для фиксации в билете и отправки чека.
+          properties:
+            email:
+              type: string
+              format: email
+              example: "user@example.com"
+            phone:
+              type: string
+              description: Номер телефона в международном формате для экстренных уведомлений.
+              example: "+1234567890"
+            firstName:
+              type: string
+              example: "Иван"
+            middleName:
+              type: string
+              example: "Иванович"
+            lastName:
+              type: string
+              example: "Иванов"
+    GatePassResponse:
+      type: object
+      required: [is_valid, status]
+      properties:
+        is_valid:
+          type: boolean
+          description: Билет валиден
+          example: true
+        status: 
+          type: string
+          enum: [ALLOWED, NOT_ALLOWED]
+          description: Допустим ли проход по билету
+          example: "ALLOWED"
